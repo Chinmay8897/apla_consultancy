@@ -23,7 +23,10 @@ import { SchedulingCalendar } from './components/SchedulingCalendar';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const isLocalhost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isLocalhost ? 'http://localhost:5000' : '');
 const API_TOKEN = 'munder-difflin-secret-token-2026';
 
 export default function App() {
@@ -99,7 +102,14 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [lastGenerated, setLastGenerated] = useState(null);
-  const [recentInvoices, setRecentInvoices] = useState([]);
+  const [recentInvoices, setRecentInvoices] = useState(() => {
+    try {
+      const saved = localStorage.getItem('apla_recent_invoices');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Generate new Invoice ID
   const generateNewInvoiceNumber = () => {
@@ -108,12 +118,12 @@ export default function App() {
   };
 
   const fetchRecentInvoices = useCallback(async () => {
-    if (!authData) return;
+    if (!authData || !API_BASE_URL) return;
     try {
       const res = await axios.get(`${API_BASE_URL}/api/invoices`, {
         headers: { 'x-api-key': authData?.token || API_TOKEN }
       });
-      if (res.data.success) {
+      if (res.data?.success) {
         setRecentInvoices(res.data.invoices || []);
       }
     } catch {
@@ -122,7 +132,9 @@ export default function App() {
   }, [authData]);
 
   useEffect(() => {
-    fetchRecentInvoices();
+    if (API_BASE_URL) {
+      fetchRecentInvoices();
+    }
   }, [fetchRecentInvoices]);
 
   // --- Mathematical Real-time Calculations ---
@@ -218,22 +230,44 @@ export default function App() {
         }
       }
 
-      // 2. Also dispatch to local/Express server for PDF/Excel files if running
+      // 2. Also dispatch to local/Express server for PDF/Excel files if running and configured
       let fileUrls = { pdf: '#', excel: '#' };
-      try {
-        const res = await axios.post(`${API_BASE_URL}/api/invoices`, payload, {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': authData?.token || API_TOKEN
-          },
-          timeout: 4000
-        });
-        if (res.data?.downloadUrls) {
-          fileUrls = res.data.downloadUrls;
+      if (API_BASE_URL) {
+        try {
+          const res = await axios.post(`${API_BASE_URL}/api/invoices`, payload, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': authData?.token || API_TOKEN
+            },
+            timeout: 4000
+          });
+          if (res.data?.downloadUrls) {
+            fileUrls = res.data.downloadUrls;
+          }
+        } catch {
+          // Express backend is optional when deployed to Convex + Vercel
         }
-      } catch {
-        // Express backend is optional when deployed to Convex + Vercel
       }
+
+      // Update recent invoices cache
+      setRecentInvoices((prev) => {
+        const updated = [
+          {
+            id: `inv-${Date.now()}`,
+            invoiceNumber,
+            customerName,
+            totalAmount: grandTotal,
+            date,
+            pdfPath: fileUrls.pdf !== '#' ? fileUrls.pdf : null,
+            excelPath: fileUrls.excel !== '#' ? fileUrls.excel : null
+          },
+          ...prev
+        ];
+        try {
+          localStorage.setItem('apla_recent_invoices', JSON.stringify(updated.slice(0, 50)));
+        } catch {}
+        return updated;
+      });
 
       setIsSuccess(true);
       setLastGenerated({
@@ -245,8 +279,10 @@ export default function App() {
         },
         downloadUrls: fileUrls
       });
-      fetchRecentInvoices();
-      addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created and saved in Convex database!`);
+      if (API_BASE_URL) {
+        fetchRecentInvoices();
+      }
+      addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created and recorded successfully!`);
 
       setTimeout(() => {
         setIsSuccess(false);
