@@ -1,0 +1,47 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Invoice {
+  id              String     @id @default(uuid())
+  invoiceNumber   String     @unique
+  date            String
+  customerName    String
+  customerEmail   String
+  customerAddress String?
+  customerGstin   String?
+  placeOfSupply   String?
+  reverseCharge   String?
+  poNumber        String?
+  poDate          String?
+  grn             String?
+  remarks         String?
+  taxableAmount   Float
+  cgst            Float
+  sgst            Float
+  totalAmount     Float
+  pdfPath         String?
+  excelPath       String?
+  webhookStatus   String     @default("pending")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  items           LineItem[]
+}
+
+model LineItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  hseSacCode  String
+  cost        Float
+  createdAt   DateTime @default(now())
+}

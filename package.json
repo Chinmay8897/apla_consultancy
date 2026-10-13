@@ -1,0 +1,12 @@
+{
+  "name": "invoice-app-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install && npm --prefix backend run db:generate && npm --prefix backend run db:push",
+    "start": "npm --prefix backend start",
+    "start:backend": "npm --prefix backend start",
+    "start:frontend": "npm --prefix frontend dev",
+    "test": "node backend/test-e2e.js"
+  }
+}
