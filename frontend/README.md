@@ -22,8 +22,15 @@ The frontend interface for **APLA Consultancy Billing & Invoice Studio**, built 
   - Session verification against backend endpoint with offline safety fallback.
 - **`src/components/AnimatedTicker.jsx`**:
   - Dynamic number rolling animation for real-time subtotal, GST (CGST/SGST 9%), and grand total updates.
+- **`src/components/SchedulingCalendar.jsx`**:
+  - Dedicated Client Auditing & Scheduling Calendar suite.
+  - Interactive Month and Year dropdown selectors with exact Date picker jump.
+  - Real-time client audit slot booking drawer with automatic Convex database sync.
+  - Automated non-working weekend styling (Saturdays & Sundays marked gray) and status indicators.
 - **`src/App.jsx`**:
-  - Main workspace containing the navigation sidebar, invoice creation forms, line item management, and invoice history modal.
+  - Main workspace containing the navigation sidebar, invoice creation forms, line item management, and real-time cloud invoice history modal.
+- **`convex/`**:
+  - Cloud database schema (`schema.ts`) and reactive queries/mutations (`invoices.ts`) for real-time invoices and audit slots.
 
 ---
 
