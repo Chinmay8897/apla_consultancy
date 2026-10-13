@@ -12,10 +12,11 @@ RUN npm run build
 
 # 2. Prepare Backend & Generate Prisma Client
 WORKDIR /app/backend
+ENV DATABASE_URL="file:./prisma/dev.db"
 COPY backend/package*.json ./
 RUN npm ci
 COPY backend/ ./
-RUN npx prisma generate
+RUN node scripts/setup-env.js && npx prisma generate
 
 # 3. Production Runner
 FROM node:20-alpine AS runner
@@ -23,6 +24,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=5000
+ENV DATABASE_URL="file:./prisma/dev.db"
 
 COPY --from=builder /app/backend /app/backend
 COPY --from=builder /app/frontend/dist /app/frontend/dist

@@ -5,10 +5,11 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate"
+    "setup:env": "node scripts/setup-env.js",
+    "start": "node scripts/setup-env.js && node src/index.js",
+    "dev": "node scripts/setup-env.js && node --watch src/index.js",
+    "db:push": "node scripts/setup-env.js && prisma db push",
+    "db:generate": "node scripts/setup-env.js && prisma generate"
   },
   "keywords": [],
   "author": "",
