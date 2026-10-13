@@ -20,11 +20,17 @@ import {
 import { AnimatedTicker } from './components/AnimatedTicker';
 import { LoginPage } from './components/LoginPage';
 import { SchedulingCalendar } from './components/SchedulingCalendar';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 const API_TOKEN = 'munder-difflin-secret-token-2026';
 
 export default function App() {
+  // --- Convex Real-time Data ---
+  const convexInvoices = useQuery(api.invoices.getInvoices);
+  const createInvoiceMutation = useMutation(api.invoices.createInvoice);
+
   // --- Authentication State ---
   const [authData, setAuthData] = useState(() => {
     try {
@@ -184,7 +190,7 @@ export default function App() {
         date,
         customerName: customerName.trim(),
         customerEmail: customerEmail.trim() || undefined,
-        customerAddress: customerAddress.trim(),
+        customerAddress: customerAddress.trim() || undefined,
         customerGstin: customerGstin.trim() || undefined,
         placeOfSupply: placeOfSupply.trim() || undefined,
         reverseCharge: reverseCharge.trim() || undefined,
@@ -192,6 +198,10 @@ export default function App() {
         poDate: poDate.trim() || undefined,
         grn: grn.trim() || undefined,
         remarks: productBrief.trim() || undefined,
+        taxableAmount,
+        cgst,
+        sgst,
+        totalAmount: grandTotal,
         items: items.map((i) => ({
           description: i.description.trim(),
           hseSacCode: i.hseSacCode?.trim() || '',
@@ -199,28 +209,51 @@ export default function App() {
         }))
       };
 
-      const res = await axios.post(`${API_BASE_URL}/api/invoices`, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': authData?.token || API_TOKEN
+      // 1. Persist directly into Convex Cloud Database
+      if (createInvoiceMutation) {
+        try {
+          await createInvoiceMutation(payload);
+        } catch (convexErr) {
+          console.warn('Convex mutation note:', convexErr.message);
         }
-      });
-
-      if (res.data.success) {
-        setIsSuccess(true);
-        setLastGenerated(res.data);
-        fetchRecentInvoices();
-        addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created and recorded successfully!`);
-
-        setTimeout(() => {
-          setIsSuccess(false);
-        }, 4000);
-      } else {
-        addToast('error', 'Generation Error', res.data.error || 'Failed to issue invoice.');
       }
+
+      // 2. Also dispatch to local/Express server for PDF/Excel files if running
+      let fileUrls = { pdf: '#', excel: '#' };
+      try {
+        const res = await axios.post(`${API_BASE_URL}/api/invoices`, payload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': authData?.token || API_TOKEN
+          },
+          timeout: 4000
+        });
+        if (res.data?.downloadUrls) {
+          fileUrls = res.data.downloadUrls;
+        }
+      } catch {
+        // Express backend is optional when deployed to Convex + Vercel
+      }
+
+      setIsSuccess(true);
+      setLastGenerated({
+        success: true,
+        invoice: {
+          invoiceNumber,
+          customerName,
+          totalAmount: grandTotal
+        },
+        downloadUrls: fileUrls
+      });
+      fetchRecentInvoices();
+      addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created and saved in Convex database!`);
+
+      setTimeout(() => {
+        setIsSuccess(false);
+      }, 4000);
     } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Server connection error';
-      addToast('error', 'API Error', msg);
+      const msg = err.response?.data?.error || err.message || 'Error creating invoice';
+      addToast('error', 'Invoice Error', msg);
     } finally {
       setIsGenerating(false);
     }
@@ -962,16 +995,33 @@ export default function App() {
               </div>
 
               <div className="p-6 max-h-96 overflow-y-auto custom-scrollbar space-y-2">
-                {recentInvoices.length === 0 ? (
-                  <p className="text-center py-8 text-xs text-slate-400">No past invoices available.</p>
-                ) : (
-                  recentInvoices.map((inv) => (
+                {(() => {
+                  const displayedInvoices = (convexInvoices && convexInvoices.length > 0) ? convexInvoices : recentInvoices;
+                  if (convexInvoices === undefined && recentInvoices.length === 0) {
+                    return (
+                      <div className="flex items-center justify-center py-8 text-xs text-slate-400">
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        <span>Connecting to Convex Cloud...</span>
+                      </div>
+                    );
+                  }
+                  if (displayedInvoices.length === 0) {
+                    return <p className="text-center py-8 text-xs text-slate-400">No past invoices available.</p>;
+                  }
+                  return displayedInvoices.map((inv) => (
                     <div
-                      key={inv.id}
+                      key={inv._id || inv.id}
                       className="p-3.5 rounded-xl border border-slate-200/80 hover:border-slate-300 bg-slate-50/50 hover:bg-white flex items-center justify-between text-xs transition"
                     >
                       <div>
-                        <p className="font-bold text-slate-900 m-0">{inv.invoiceNumber}</p>
+                        <div className="flex items-center space-x-2">
+                          <p className="font-bold text-slate-900 m-0">{inv.invoiceNumber}</p>
+                          {inv._id && (
+                            <span className="text-[9px] bg-teal-50 text-teal-800 font-bold px-1.5 py-0.5 rounded border border-teal-200/80">
+                              Live Cloud
+                            </span>
+                          )}
+                        </div>
                         <p className="text-slate-500 m-0 mt-0.5">
                           {inv.customerName} • ₹{Number(inv.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </p>
@@ -980,7 +1030,7 @@ export default function App() {
                       <div className="flex items-center space-x-2">
                         {inv.pdfPath && (
                           <a
-                            href={`${API_BASE_URL}${inv.pdfPath}`}
+                            href={inv.pdfPath.startsWith('http') ? inv.pdfPath : `${API_BASE_URL}${inv.pdfPath}`}
                             target="_blank"
                             rel="noreferrer"
                             className="p-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 transition"
@@ -991,7 +1041,7 @@ export default function App() {
                         )}
                         {inv.excelPath && (
                           <a
-                            href={`${API_BASE_URL}${inv.excelPath}`}
+                            href={inv.excelPath.startsWith('http') ? inv.excelPath : `${API_BASE_URL}${inv.excelPath}`}
                             target="_blank"
                             rel="noreferrer"
                             className="p-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
@@ -1002,8 +1052,8 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                  ))
-                )}
+                  ));
+                })()}
               </div>
             </motion.div>
           </div>

@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.claude/
+.agents/
+skills-lock.json
+CLAUDE.md
+AGENTS.md
+

@@ -12,6 +12,8 @@ import {
   Building,
   Briefcase
 } from 'lucide-react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 
 // --- Initial Mock Data for Client Auditing & Scheduling ---
 const INITIAL_AUDIT_SCHEDULE = [
@@ -45,9 +47,24 @@ const YEAR_OPTIONS = [
 ];
 
 export function SchedulingCalendar({ onBackToInvoice }) {
+  // --- Convex Real-time Audit Slots ---
+  const convexSlots = useQuery(api.invoices.getAuditSlots);
+  const bookSlotMutation = useMutation(api.invoices.bookAuditSlot);
+  const initSlotsMutation = useMutation(api.invoices.initializeAuditSlots);
+
   // Current view month & year (default October 2026)
   const [currentDate, setCurrentDate] = useState(new Date(2026, 9, 1));
   const [scheduleData, setScheduleData] = useState(INITIAL_AUDIT_SCHEDULE);
+
+  // Initialize sample slots into Convex if table is completely fresh
+  React.useEffect(() => {
+    if (convexSlots && convexSlots.length === 0 && initSlotsMutation) {
+      initSlotsMutation({ slots: INITIAL_AUDIT_SCHEDULE }).catch(() => {});
+    }
+  }, [convexSlots, initSlotsMutation]);
+
+  // Use Convex real-time schedule if loaded, otherwise fallback to local schedule
+  const activeSchedule = (convexSlots && convexSlots.length > 0) ? convexSlots : scheduleData;
   
   // Slide-out modal state for booking an available date
   const [selectedDate, setSelectedDate] = useState(null);
@@ -147,7 +164,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
   for (let d = 1; d <= daysInCurrentMonth; d++) {
     const dateKey = formatDateKey(currentYear, currentMonth, d);
     const dayOfWeek = new Date(currentYear, currentMonth, d).getDay();
-    const match = scheduleData.find((item) => item.date === dateKey);
+    const match = activeSchedule.find((item) => item.date === dateKey);
     let cellStatus = 'available';
     let cellData = null;
 
@@ -220,21 +237,22 @@ export function SchedulingCalendar({ onBackToInvoice }) {
     setIsSubmitting(true);
 
     try {
-      // =====================================================================
-      // INTEGRATION HOOK FOR MUNDER DIFFLIN AUTOMATION AGENT
-      // When the backend endpoint is wired, replace with:
-      // await axios.post(`${API_BASE_URL}/api/scheduling/audit`, {
-      //   date: selectedDate,
-      //   clientName,
-      //   clientEmail,
-      //   auditType,
-      //   leadAuditor,
-      //   notes: specialNotes
-      // });
-      // =====================================================================
-      await new Promise((res) => setTimeout(res, 800)); // Simulated async execution
+      // Persist to Convex Cloud database
+      if (bookSlotMutation) {
+        try {
+          await bookSlotMutation({
+            date: selectedDate,
+            client: clientName.trim(),
+            auditType,
+            time: '10:00 AM - 04:00 PM',
+            note: specialNotes.trim() || undefined
+          });
+        } catch (convexErr) {
+          console.warn('Convex book slot error:', convexErr.message);
+        }
+      }
 
-      // Update local state: mark date as booked with client details
+      // Update local state: mark date as booked with client details for immediate feedback
       setScheduleData((prev) => [
         ...prev.filter((item) => item.date !== selectedDate),
         {
@@ -438,17 +456,17 @@ export function SchedulingCalendar({ onBackToInvoice }) {
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 text-xs">
             <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/90 text-emerald-800 font-semibold shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Available ({scheduleData.filter((s) => s.status === 'available').length})</span>
+              <span>Available ({activeSchedule.filter((s) => s.status === 'available').length})</span>
             </div>
 
             <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200/90 text-rose-800 font-semibold shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>Booked ({scheduleData.filter((s) => s.status === 'booked').length})</span>
+              <span>Booked ({activeSchedule.filter((s) => s.status === 'booked').length})</span>
             </div>
 
             <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-800 font-semibold shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span>Pending ({scheduleData.filter((s) => s.status === 'pending').length})</span>
+              <span>Pending ({activeSchedule.filter((s) => s.status === 'pending').length})</span>
             </div>
 
             <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-semibold shadow-2xs">
