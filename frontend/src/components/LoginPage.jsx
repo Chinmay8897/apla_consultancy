@@ -134,9 +134,9 @@ export function LoginPage({ onLoginSuccess }) {
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.04)] p-7 sm:p-8 space-y-6">
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.04)] p-5 sm:p-8 space-y-5 sm:space-y-6">
           <div className="border-b border-slate-100 pb-4">
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight m-0">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight m-0">
               Sign In to Invoice Studio
             </h2>
           </div>

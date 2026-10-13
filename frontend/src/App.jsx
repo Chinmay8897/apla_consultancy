@@ -15,7 +15,8 @@ import {
   Check,
   RefreshCw,
   LogOut,
-  Calendar
+  Calendar,
+  Menu
 } from 'lucide-react';
 import { AnimatedTicker } from './components/AnimatedTicker';
 import { LoginPage } from './components/LoginPage';
@@ -68,6 +69,7 @@ export default function App() {
   // --- Active Sidebar Navigation State ---
   const [activeMenu, setActiveMenu] = useState('create-invoice');
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // --- Search Bar State ---
   const [topSearch, setTopSearch] = useState('');
@@ -304,9 +306,9 @@ export default function App() {
     <div className="min-h-screen bg-[#F6F7FA] text-slate-800 flex font-sans antialiased" style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
 
       {/* ========================================================
-          LEFT NAVIGATION SIDEBAR
+          DESKTOP NAVIGATION SIDEBAR (Hidden on mobile < lg)
           ======================================================== */}
-      <aside className="w-64 bg-white border-r border-slate-200/90 flex flex-col shrink-0 min-h-screen sticky top-0 h-screen overflow-y-auto custom-scrollbar select-none z-20">
+      <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200/90 flex-col shrink-0 min-h-screen sticky top-0 h-screen overflow-y-auto custom-scrollbar select-none z-20">
 
         {/* Brand Header */}
         <div className="p-5 border-b border-slate-100 flex items-center space-x-3">
@@ -399,28 +401,189 @@ export default function App() {
       </aside>
 
       {/* ========================================================
+          MOBILE NAVIGATION DRAWER (Slide-over overlay on mobile < lg)
+          ======================================================== */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden flex">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"
+            />
+
+            {/* Drawer Panel */}
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 240 }}
+              className="relative w-72 max-w-[85vw] bg-white border-r border-slate-200 flex flex-col h-full z-10 shadow-2xl"
+            >
+              {/* Brand Header with Close Button */}
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-700 via-teal-800 to-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-sm ring-2 ring-teal-700/10 shrink-0">
+                    AC
+                  </div>
+                  <div className="overflow-hidden">
+                    <h1 className="text-sm font-bold text-slate-900 tracking-tight truncate leading-tight">
+                      APLA Consultancy
+                    </h1>
+                    <p className="text-[11px] text-slate-500 truncate font-medium">
+                      Consulting & Advisory Services
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  aria-label="Close menu"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Mobile Navigation Links */}
+              <nav className="p-3.5 space-y-1.5 flex-1 text-[13px] font-medium text-slate-600 overflow-y-auto custom-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveMenu('create-invoice');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors ${activeMenu === 'create-invoice'
+                      ? 'bg-teal-700 text-white font-semibold shadow-xs'
+                      : 'hover:bg-slate-100 text-slate-700 hover:text-slate-900'
+                    }`}
+                >
+                  <FileText className={`w-4 h-4 ${activeMenu === 'create-invoice' ? 'text-white' : 'text-slate-400'}`} />
+                  <span>Create Invoice</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveMenu('scheduling-calendar');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors ${activeMenu === 'scheduling-calendar'
+                      ? 'bg-teal-700 text-white font-semibold shadow-xs'
+                      : 'hover:bg-slate-100 text-slate-700 hover:text-slate-900'
+                    }`}
+                >
+                  <Calendar className={`w-4 h-4 ${activeMenu === 'scheduling-calendar' ? 'text-white' : 'text-slate-400'}`} />
+                  <span>Audit Calendar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHistoryModal(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <FileSpreadsheet className="w-4 h-4 text-slate-400" />
+                    <span>Invoice History</span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                    {recentInvoices.length}
+                  </span>
+                </button>
+              </nav>
+
+              {/* Mobile Footer */}
+              <div className="p-3.5 border-t border-slate-100 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    addToast('info', 'Settings', 'Preferences and tax configurations.');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-[13px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition"
+                >
+                  <Settings className="w-4 h-4 text-slate-400" />
+                  <span>Settings</span>
+                </button>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between px-2 py-1">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center">
+                      A
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-900 m-0 leading-none">Admin</p>
+                      <p className="text-[10px] text-slate-400 m-0 mt-0.5">Owner</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    title="Logout session"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================
           MAIN WORKSPACE AREA
           ======================================================== */}
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Top Navbar */}
-        <header className="h-14 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-10 select-none">
+        <header className="h-14 bg-white border-b border-slate-200/80 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-10 select-none gap-2">
+          <div className="flex items-center space-x-2.5">
+            {/* Hamburger Button on Mobile */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none transition"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            {/* Mobile Brand Mark */}
+            <div className="lg:hidden flex items-center space-x-2">
+              <div className="w-7 h-7 rounded-lg bg-teal-700 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                AC
+              </div>
+              <span className="font-bold text-xs text-slate-900 hidden xs:inline sm:hidden">APLA</span>
+            </div>
+          </div>
+
           {/* Search Bar */}
-          <div className="w-96 max-w-md relative">
+          <div className="flex-1 max-w-xs sm:max-w-md relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search products, invoices, customers..."
+              placeholder="Search..."
               value={topSearch}
               onChange={(e) => setTopSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-slate-200 bg-slate-50/70 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-2 focus:ring-teal-600/10 transition"
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50/70 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-2 focus:ring-teal-600/10 transition"
             />
           </div>
 
           {/* Right Header Badges */}
-          <div className="flex items-center space-x-4 text-xs text-slate-600">
+          <div className="flex items-center space-x-2 sm:space-x-4 text-xs text-slate-600 shrink-0">
             <span className="hidden sm:inline-block font-medium text-slate-500">
               Tuesday, 13 Oct 2026
+            </span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
+              Live
             </span>
           </div>
         </header>
@@ -462,7 +625,7 @@ export default function App() {
         </div>
 
         {/* --- Main Document Workspace --- */}
-        <main className="flex-1 p-6 sm:p-8 max-w-7xl w-full mx-auto space-y-6">
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-5 sm:space-y-6">
           <AnimatePresence mode="wait">
             {activeMenu === 'scheduling-calendar' ? (
               <motion.div
@@ -481,19 +644,19 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12 }}
                 transition={{ duration: 0.22 }}
-                className="space-y-6"
+                className="space-y-5 sm:space-y-6"
               >
                 {/* Page Heading in Helvetica */}
-                <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between pb-2 border-b border-slate-200/60">
+                <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between pb-2 border-b border-slate-200/60 gap-1 sm:gap-0">
                   <div>
-                    <h2 className="text-3xl font-bold text-slate-900 tracking-tight m-0">
+                    <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight m-0">
                       New Invoice
                     </h2>
                     <p className="text-xs text-slate-500 mt-1 m-0">
                       Choose the customer and products. Prices, HSN and GST fill in by themselves.
                     </p>
                   </div>
-                  <div className="mt-2 sm:mt-0 text-xs font-semibold text-slate-400">
+                  <div className="text-xs font-semibold text-slate-400">
                     13 Oct 2026
                   </div>
                 </div>
@@ -623,25 +786,45 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="space-y-2.5 pt-1">
-                    <div className="grid grid-cols-12 text-[11px] font-bold uppercase tracking-wider text-slate-400 pb-1.5 border-b border-slate-100 px-2">
-                      <span className="col-span-12 sm:col-span-6">Description</span>
-                      <span className="col-span-4 sm:col-span-2 text-center">HSN / SAC</span>
-                      <span className="col-span-3 sm:col-span-1 text-center">Qty</span>
-                      <span className="col-span-4 sm:col-span-2 text-right">Rate (₹)</span>
+                    {/* Desktop Table Column Headers */}
+                    <div className="hidden sm:grid grid-cols-12 text-[11px] font-bold uppercase tracking-wider text-slate-400 pb-1.5 border-b border-slate-100 px-2">
+                      <span className="col-span-6">Description</span>
+                      <span className="col-span-2 text-center">HSN / SAC</span>
+                      <span className="col-span-1 text-center">Qty</span>
+                      <span className="col-span-2 text-right">Rate (₹)</span>
                       <span className="col-span-1 text-center">Del</span>
                     </div>
 
                     <AnimatePresence initial={false}>
-                      {items.map((item) => (
+                      {items.map((item, index) => (
                         <motion.div
                           key={item.id}
                           layout
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95 }}
-                          className="grid grid-cols-12 gap-2 items-center p-2.5 rounded-lg border border-slate-200/70 bg-white hover:border-slate-300 transition"
+                          className="p-3 sm:p-2.5 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-2xs space-y-2.5 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center"
                         >
-                          <div className="col-span-12 sm:col-span-6">
+                          {/* Mobile Header indicator with delete button */}
+                          <div className="flex sm:hidden items-center justify-between pb-1 border-b border-slate-100">
+                            <span className="text-[11px] font-bold text-slate-500">
+                              Item #{index + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(item.id)}
+                              title="Delete Item"
+                              className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Description */}
+                          <div className="sm:col-span-6">
+                            <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1">
+                              Description *
+                            </label>
                             <input
                               type="text"
                               required
@@ -652,48 +835,60 @@ export default function App() {
                             />
                           </div>
 
-                          <div className="col-span-4 sm:col-span-2">
-                            <input
-                              type="text"
-                              placeholder="998311"
-                              value={item.hseSacCode}
-                              onChange={(e) => handleItemChange(item.id, 'hseSacCode', e.target.value)}
-                              className="w-full text-center rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-teal-700 transition"
-                            />
-                          </div>
+                          {/* Mobile 3-column subgrid (HSN, Qty, Rate) / Desktop individual columns */}
+                          <div className="grid grid-cols-11 gap-2 items-center sm:contents">
+                            <div className="col-span-4 sm:col-span-2">
+                              <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-center">
+                                HSN / SAC
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="998311"
+                                value={item.hseSacCode}
+                                onChange={(e) => handleItemChange(item.id, 'hseSacCode', e.target.value)}
+                                className="w-full text-center rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-teal-700 transition"
+                              />
+                            </div>
 
-                          <div className="col-span-3 sm:col-span-1">
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.qty || 1}
-                              onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
-                              className="w-full text-center rounded-md border border-slate-200 px-1 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-teal-700 transition"
-                            />
-                          </div>
+                            <div className="col-span-3 sm:col-span-1">
+                              <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-center">
+                                Qty
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.qty || 1}
+                                onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
+                                className="w-full text-center rounded-md border border-slate-200 px-1 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-teal-700 transition"
+                              />
+                            </div>
 
-                          <div className="col-span-4 sm:col-span-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              required
-                              placeholder="0.00"
-                              value={item.cost}
-                              onChange={(e) => handleItemChange(item.id, 'cost', e.target.value)}
-                              className="w-full text-right rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-teal-700 transition"
-                            />
-                          </div>
+                            <div className="col-span-4 sm:col-span-2">
+                              <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-right">
+                                Rate (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                required
+                                placeholder="0.00"
+                                value={item.cost}
+                                onChange={(e) => handleItemChange(item.id, 'cost', e.target.value)}
+                                className="w-full text-right rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-teal-700 transition"
+                              />
+                            </div>
 
-                          <div className="col-span-1 flex justify-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(item.id)}
-                              title="Delete Item"
-                              className="p-1.5 rounded transition text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="hidden sm:flex col-span-1 justify-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(item.id)}
+                                title="Delete Item"
+                                className="p-1.5 rounded transition text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         </motion.div>
                       ))}
@@ -1047,23 +1242,23 @@ export default function App() {
                   return displayedInvoices.map((inv) => (
                     <div
                       key={inv._id || inv.id}
-                      className="p-3.5 rounded-xl border border-slate-200/80 hover:border-slate-300 bg-slate-50/50 hover:bg-white flex items-center justify-between text-xs transition"
+                      className="p-3 sm:p-3.5 rounded-xl border border-slate-200/80 hover:border-slate-300 bg-slate-50/50 hover:bg-white flex flex-col sm:flex-row sm:items-center justify-between text-xs transition gap-2.5 sm:gap-4"
                     >
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-2">
-                          <p className="font-bold text-slate-900 m-0">{inv.invoiceNumber}</p>
+                          <p className="font-bold text-slate-900 m-0 truncate">{inv.invoiceNumber}</p>
                           {inv._id && (
-                            <span className="text-[9px] bg-teal-50 text-teal-800 font-bold px-1.5 py-0.5 rounded border border-teal-200/80">
+                            <span className="text-[9px] bg-teal-50 text-teal-800 font-bold px-1.5 py-0.5 rounded border border-teal-200/80 shrink-0">
                               Live Cloud
                             </span>
                           )}
                         </div>
-                        <p className="text-slate-500 m-0 mt-0.5">
+                        <p className="text-slate-500 m-0 mt-0.5 truncate">
                           {inv.customerName} • ₹{Number(inv.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </p>
                       </div>
 
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
                         {inv.pdfPath && (
                           <a
                             href={inv.pdfPath.startsWith('http') ? inv.pdfPath : `${API_BASE_URL}${inv.pdfPath}`}

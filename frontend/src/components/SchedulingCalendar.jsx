@@ -316,14 +316,14 @@ export function SchedulingCalendar({ onBackToInvoice }) {
       style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}
     >
       {/* Top Header / View Switcher Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between pb-2 border-b border-slate-200/60">
+      <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between pb-2 border-b border-slate-200/60 gap-2.5 sm:gap-0">
         <div>
           <div className="flex items-center space-x-2.5">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-200/80">
               Audit Operations
             </span>
           </div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mt-1 m-0">
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mt-1 m-0">
             Scheduling & Audit Calendar
           </h2>
           <p className="text-xs text-slate-500 mt-1 m-0">
@@ -332,11 +332,11 @@ export function SchedulingCalendar({ onBackToInvoice }) {
         </div>
 
         {/* View Switcher / Quick Action */}
-        <div className="mt-2 sm:mt-0 flex items-center space-x-3">
+        <div className="flex items-center space-x-3 shrink-0">
           <button
             type="button"
             onClick={onBackToInvoice}
-            className="px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-2xs transition"
+            className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-2xs transition"
           >
             ← Return to Invoice Studio
           </button>
@@ -350,13 +350,13 @@ export function SchedulingCalendar({ onBackToInvoice }) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.04)] p-6 sm:p-7 space-y-6"
+        className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.04)] p-3.5 sm:p-6 lg:p-7 space-y-4 sm:space-y-6"
       >
         {/* Month Navigation & Legend Control Bar */}
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3.5 sm:gap-4 pb-4 border-b border-slate-100">
           
           {/* Navigation, Month, Year & Exact Date Selection Controls */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <div className="flex items-center bg-slate-50 rounded-xl border border-slate-200/80 p-1 shadow-2xs">
               <button
                 type="button"
@@ -369,7 +369,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
               <button
                 type="button"
                 onClick={handleToday}
-                className="px-3 py-1 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-white rounded-lg transition"
+                className="px-2.5 sm:px-3 py-1 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-white rounded-lg transition"
               >
                 Today
               </button>
@@ -384,7 +384,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
             </div>
 
             {/* Direct Month & Year Selectors */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {/* Month Dropdown */}
               <div className="relative inline-flex items-center">
                 <select
@@ -392,7 +392,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                   aria-label="Select month"
                   value={currentMonth}
                   onChange={(e) => handleMonthChange(Number(e.target.value))}
-                  className="appearance-none bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 rounded-xl pl-3 pr-8 py-1.5 text-sm sm:text-base font-bold text-slate-900 cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#18687D]/20 focus:border-[#18687D] transition"
+                  className="appearance-none bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 rounded-xl pl-2.5 sm:pl-3 pr-7 sm:pr-8 py-1.5 text-xs sm:text-base font-bold text-slate-900 cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#18687D]/20 focus:border-[#18687D] transition"
                 >
                   {MONTH_NAMES.map((name, idx) => (
                     <option key={name} value={idx}>
@@ -400,7 +400,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 pointer-events-none" />
+                <ChevronDown className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-slate-400 absolute right-2 pointer-events-none" />
               </div>
 
               {/* Year Dropdown */}
@@ -410,7 +410,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                   aria-label="Select year"
                   value={currentYear}
                   onChange={(e) => handleYearChange(Number(e.target.value))}
-                  className="appearance-none bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 rounded-xl pl-3 pr-8 py-1.5 text-sm sm:text-base font-bold text-[#18687D] cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#18687D]/20 focus:border-[#18687D] transition"
+                  className="appearance-none bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 rounded-xl pl-2.5 sm:pl-3 pr-7 sm:pr-8 py-1.5 text-xs sm:text-base font-bold text-[#18687D] cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#18687D]/20 focus:border-[#18687D] transition"
                 >
                   {yearOptions.map((yr) => (
                     <option key={yr} value={yr}>
@@ -418,14 +418,14 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-4 h-4 text-[#18687D]/70 absolute right-2.5 pointer-events-none" />
+                <ChevronDown className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-[#18687D]/70 absolute right-2 pointer-events-none" />
               </div>
             </div>
 
             {/* Direct Exact Date Jump Selector */}
-            <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 shadow-2xs">
-              <CalendarIcon className="w-3.5 h-3.5 text-[#18687D]" />
-              <label htmlFor="calendar-exact-date" className="text-xs font-bold text-slate-600 hidden sm:inline whitespace-nowrap">
+            <div className="flex items-center space-x-1 sm:space-x-1.5 bg-slate-50 border border-slate-200/90 rounded-xl px-2 sm:px-2.5 py-1 shadow-2xs">
+              <CalendarIcon className="w-3.5 h-3.5 text-[#18687D] shrink-0" />
+              <label htmlFor="calendar-exact-date" className="text-xs font-bold text-slate-600 hidden md:inline whitespace-nowrap">
                 Exact Date:
               </label>
               <input
@@ -434,7 +434,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                 aria-label="Select exact date"
                 value={jumpDate}
                 onChange={handleExactDateChange}
-                className="bg-white border border-slate-200 text-xs font-semibold text-slate-800 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#18687D]/30 focus:border-[#18687D] cursor-pointer shadow-2xs"
+                className="bg-white border border-slate-200 text-xs font-semibold text-slate-800 rounded-lg px-1.5 sm:px-2 py-1 max-w-[125px] sm:max-w-none focus:outline-none focus:ring-2 focus:ring-[#18687D]/30 focus:border-[#18687D] cursor-pointer shadow-2xs"
               />
               {jumpDate && (
                 <button
@@ -453,24 +453,24 @@ export function SchedulingCalendar({ onBackToInvoice }) {
           </div>
 
           {/* Availability Status Indicators / Legend */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 text-xs">
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/90 text-emerald-800 font-semibold shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 text-[11px] sm:text-xs">
+            <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/90 text-emerald-800 font-semibold shadow-2xs">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>Available ({activeSchedule.filter((s) => s.status === 'available').length})</span>
             </div>
 
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200/90 text-rose-800 font-semibold shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-rose-50 border border-rose-200/90 text-rose-800 font-semibold shadow-2xs">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-rose-500" />
               <span>Booked ({activeSchedule.filter((s) => s.status === 'booked').length})</span>
             </div>
 
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-800 font-semibold shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-800 font-semibold shadow-2xs">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-amber-500" />
               <span>Pending ({activeSchedule.filter((s) => s.status === 'pending').length})</span>
             </div>
 
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-semibold shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-slate-400" />
+            <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-semibold shadow-2xs">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-slate-400" />
               <span>Unavailable / Weekend</span>
             </div>
           </div>
@@ -559,11 +559,11 @@ export function SchedulingCalendar({ onBackToInvoice }) {
         )}
 
         {/* Weekday Column Headers */}
-        <div className="grid grid-cols-7 gap-2 sm:gap-3 text-center">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2.5 text-center">
           {WEEKDAYS.map((wd, idx) => (
             <div
               key={wd}
-              className={`text-[11px] font-bold uppercase tracking-wider py-1 ${
+              className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider py-1 ${
                 idx === 0 || idx === 6 ? 'text-slate-400' : 'text-slate-500'
               }`}
             >
@@ -573,7 +573,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
         </div>
 
         {/* 7-Column Responsive Date Grid */}
-        <div className="grid grid-cols-7 gap-2 sm:gap-3">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2.5">
           {gridCells.map((cell, index) => {
             const statusClasses = getStatusClasses(cell.status, cell.isCurrentMonth);
             const isToday = cell.dateKey === '2026-10-13';
@@ -584,16 +584,16 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                 key={`${cell.dateKey}-${index}`}
                 whileHover={cell.isCurrentMonth && cell.status === 'available' ? { y: -2 } : {}}
                 onClick={() => handleCellClick(cell)}
-                className={`min-h-[84px] sm:min-h-[102px] p-2 sm:p-2.5 rounded-xl border flex flex-col justify-between select-none relative overflow-hidden transition ${statusClasses} ${
-                  isSelected ? 'ring-2 ring-[#18687D] ring-offset-2 shadow-md z-10' : ''
+                className={`min-h-[54px] sm:min-h-[98px] p-1 sm:p-2.5 rounded-lg sm:rounded-xl border flex flex-col justify-between select-none relative overflow-hidden transition ${statusClasses} ${
+                  isSelected ? 'ring-2 ring-[#18687D] ring-offset-1 sm:ring-offset-2 shadow-md z-10' : ''
                 }`}
               >
                 {/* Top Row: Date Number & Badges */}
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-1.5">
-                    <span className={`text-xs sm:text-sm font-bold ${
+                  <div className="flex items-center space-x-1 sm:space-x-1.5">
+                    <span className={`text-[11px] sm:text-sm font-bold ${
                       isToday
-                        ? 'w-6 h-6 rounded-full bg-[#18687D] text-white flex items-center justify-center -ml-0.5 shadow-2xs'
+                        ? 'w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#18687D] text-white flex items-center justify-center -ml-0.5 shadow-2xs text-[10px] sm:text-xs'
                         : cell.status === 'holiday'
                           ? 'text-slate-400'
                           : 'text-slate-900'
@@ -601,7 +601,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                       {cell.day}
                     </span>
                     {isSelected && (
-                      <span className="text-[9px] font-bold text-teal-800 bg-teal-100/90 px-1.5 py-0.2 rounded border border-teal-300">
+                      <span className="text-[8px] sm:text-[9px] font-bold text-teal-800 bg-teal-100/90 px-1 py-0.2 rounded border border-teal-300 hidden sm:inline">
                         Selected
                       </span>
                     )}
@@ -611,28 +611,28 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                   {cell.isCurrentMonth && (
                     <span className="text-[10px] uppercase font-bold tracking-wider">
                       {cell.status === 'available' && (
-                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200" />
+                        <span className="inline-block w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-500 ring-1 sm:ring-2 ring-emerald-200" />
                       )}
                       {cell.status === 'booked' && (
-                        <span className="inline-block w-2 h-2 rounded-full bg-rose-500 ring-2 ring-rose-200" />
+                        <span className="inline-block w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-rose-500 ring-1 sm:ring-2 ring-rose-200" />
                       )}
                       {cell.status === 'pending' && (
-                        <span className="inline-block w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-200" />
+                        <span className="inline-block w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-amber-500 ring-1 sm:ring-2 ring-amber-200" />
                       )}
                     </span>
                   )}
                 </div>
 
                 {/* Body Content / Event Metadata */}
-                <div className="mt-1 flex-1 flex flex-col justify-end">
+                <div className="mt-0.5 sm:mt-1 flex-1 flex flex-col justify-end">
                   {cell.isCurrentMonth && cell.data && (
-                    <div className="text-[10px] leading-tight truncate">
+                    <div className="text-[8px] sm:text-[10px] leading-tight truncate">
                       {cell.status === 'booked' && (
                         <div>
-                          <p className="font-bold text-rose-950 truncate m-0">
-                            {cell.data.client || 'Client Audit'}
+                          <p className="font-bold text-rose-950 truncate m-0 text-[8px] sm:text-[10px]">
+                            {cell.data.client || 'Audit'}
                           </p>
-                          <p className="text-rose-700 truncate m-0 text-[9px] hidden sm:block font-medium">
+                          <p className="text-rose-700 truncate m-0 text-[8px] sm:text-[9px] hidden sm:block font-medium">
                             {cell.data.auditType}
                           </p>
                         </div>
@@ -640,17 +640,17 @@ export function SchedulingCalendar({ onBackToInvoice }) {
 
                       {cell.status === 'pending' && (
                         <div>
-                          <p className="font-bold text-amber-950 truncate m-0">
-                            {cell.data.client || 'Pending Slot'}
+                          <p className="font-bold text-amber-950 truncate m-0 text-[8px] sm:text-[10px]">
+                            {cell.data.client || 'Pending'}
                           </p>
-                          <p className="text-amber-700 truncate m-0 text-[9px] hidden sm:block font-medium">
+                          <p className="text-amber-700 truncate m-0 text-[8px] sm:text-[9px] hidden sm:block font-medium">
                             Awaiting Confirm
                           </p>
                         </div>
                       )}
 
                       {cell.status === 'holiday' && (
-                        <p className="text-slate-400 truncate m-0 text-[9px] font-medium">
+                        <p className="text-slate-400 truncate m-0 text-[8px] sm:text-[9px] font-medium">
                           {cell.data.title || 'Closed'}
                         </p>
                       )}
@@ -658,9 +658,9 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                   )}
 
                   {cell.isCurrentMonth && cell.status === 'available' && (
-                    <div className="text-[10px] font-semibold text-emerald-800 flex items-center space-x-1">
+                    <div className="text-[8px] sm:text-[10px] font-semibold text-emerald-800 flex items-center space-x-1">
                       <span className="hidden sm:inline bg-emerald-100/80 px-1.5 py-0.5 rounded text-emerald-800 font-bold">+ Book Slot</span>
-                      <span className="sm:hidden text-center w-full font-bold text-emerald-700">Open</span>
+                      <span className="sm:hidden text-center w-full font-bold text-emerald-700 text-[8px]">Open</span>
                     </div>
                   )}
                 </div>
@@ -675,21 +675,21 @@ export function SchedulingCalendar({ onBackToInvoice }) {
           ========================================================================= */}
       <AnimatePresence>
         {isBookingOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 10 }}
-              className="bg-white rounded-2xl border border-slate-200/90 shadow-2xl max-w-lg w-full overflow-hidden text-slate-800"
+              className="bg-white rounded-2xl border border-slate-200/90 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-800"
             >
               {/* Modal Header */}
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200/80 text-teal-800 flex items-center justify-center">
-                    <CalendarIcon className="w-5 h-5 text-teal-700" />
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-teal-50 border border-teal-200/80 text-teal-800 flex items-center justify-center shrink-0">
+                    <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5 text-teal-700" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-slate-900 m-0">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 m-0">
                       Schedule Client Audit
                     </h3>
                     <p className="text-xs text-slate-500 m-0 mt-0.5">
@@ -708,7 +708,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
               </div>
 
               {/* Form Content */}
-              <form onSubmit={handleScheduleAudit} className="p-6 space-y-4 text-xs">
+              <form onSubmit={handleScheduleAudit} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto custom-scrollbar flex-1">
 
                 {submitFeedback && (
                   <div className={`p-3 rounded-xl border flex items-center space-x-2.5 ${
