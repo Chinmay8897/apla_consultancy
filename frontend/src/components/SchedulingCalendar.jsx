@@ -52,8 +52,11 @@ export function SchedulingCalendar({ onBackToInvoice }) {
   const bookSlotMutation = useMutation(api.invoices.bookAuditSlot);
   const initSlotsMutation = useMutation(api.invoices.initializeAuditSlots);
 
-  // Current view month & year (default October 2026)
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 9, 1));
+  // Current view month & year (defaults to active current month)
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [scheduleData, setScheduleData] = useState(INITIAL_AUDIT_SCHEDULE);
 
   // Initialize sample slots into Convex if table is completely fresh
@@ -96,9 +99,9 @@ export function SchedulingCalendar({ onBackToInvoice }) {
   };
 
   const handleToday = () => {
-    const today = new Date(2026, 9, 13);
-    setCurrentDate(today);
-    const todayKey = '2026-10-13';
+    const now = new Date();
+    setCurrentDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    const todayKey = formatDateKey(now.getFullYear(), now.getMonth(), now.getDate());
     setHighlightedDate(todayKey);
     setJumpDate(todayKey);
   };
@@ -144,6 +147,9 @@ export function SchedulingCalendar({ onBackToInvoice }) {
     const d = String(day).padStart(2, '0');
     return `${y}-${m}-${d}`;
   };
+
+  const now = new Date();
+  const currentTodayKey = formatDateKey(now.getFullYear(), now.getMonth(), now.getDate());
 
   // Build grid days array
   const gridCells = [];
@@ -576,7 +582,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
         <div className="grid grid-cols-7 gap-1 sm:gap-2.5">
           {gridCells.map((cell, index) => {
             const statusClasses = getStatusClasses(cell.status, cell.isCurrentMonth);
-            const isToday = cell.dateKey === '2026-10-13';
+            const isToday = cell.dateKey === currentTodayKey;
             const isSelected = cell.dateKey === highlightedDate;
 
             return (
