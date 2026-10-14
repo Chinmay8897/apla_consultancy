@@ -88,7 +88,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Mathematical calculations (exact GST 9% + 9%)
+    // Mathematical calculations (exact GST 9% + 9% or IGST or None)
     let taxableAmount = 0;
     const sanitizedItems = items.map(item => {
       const cost = Math.max(0, parseFloat(item.cost) || 0);
@@ -101,9 +101,24 @@ router.post('/', async (req, res) => {
     });
 
     taxableAmount = Number(taxableAmount.toFixed(2));
-    const cgst = Number((taxableAmount * 0.09).toFixed(2));
-    const sgst = Number((taxableAmount * 0.09).toFixed(2));
-    const totalAmount = Number((taxableAmount + cgst + sgst).toFixed(2));
+    const isGst = req.body.gstEnabled !== false;
+    const isIgst = isGst && Boolean(req.body.igstEnabled);
+    const igstRateVal = Number(req.body.igstRate) > 0 ? Number(req.body.igstRate) : 18;
+
+    let cgst = 0;
+    let sgst = 0;
+    let igst = 0;
+
+    if (isGst) {
+      if (isIgst) {
+        igst = Number((taxableAmount * (igstRateVal / 100)).toFixed(2));
+      } else {
+        cgst = Number((taxableAmount * 0.09).toFixed(2));
+        sgst = Number((taxableAmount * 0.09).toFixed(2));
+      }
+    }
+
+    const totalAmount = Number((taxableAmount + cgst + sgst + igst).toFixed(2));
 
     const finalCustomerEmail = customerEmail?.trim() || '';
 
@@ -120,9 +135,13 @@ router.post('/', async (req, res) => {
       poDate: poDate?.trim() || '',
       grn: grn?.trim() || '',
       remarks: remarks?.trim() || undefined,
+      gstEnabled: isGst,
+      igstEnabled: isIgst,
+      igstRate: igstRateVal,
       taxableAmount,
       cgst,
       sgst,
+      igst,
       totalAmount,
       items: sanitizedItems
     };

@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { formatIndianNumber, formatInvoiceDate, numberToWords, getDigitalSignatureTimestamp } from './formatters.js';
+import { formatIndianNumber, formatInvoiceDate, numberToWords } from './formatters.js';
 
 /**
  * Draws a rectangle with stroke and optional fill in jsPDF.
@@ -8,7 +8,6 @@ function drawBox(doc, x, y, w, h, { fill = null, stroke = '#000000', lineWidth =
   doc.setLineWidth(lineWidth);
   
   if (stroke) {
-    // Parse hex or rgb
     doc.setDrawColor(0, 0, 0);
   }
   
@@ -43,12 +42,10 @@ function drawText(doc, text, x, y, w, h, {
   doc.setTextColor(color[0] ?? 0, color[1] ?? 0, color[2] ?? 0);
 
   const maxTextWidth = Math.max(10, w - 6);
-  // Split text into multiple lines if needed
   const lines = doc.splitTextToSize(str, maxTextWidth);
   const lineHeight = size * 1.15 + lineGap;
   const totalTextHeight = lines.length * lineHeight;
 
-  // Calculate starting Y position (jsPDF text uses baseline of the first line)
   const baselineOffset = size * 0.82;
   let startY = y + 2 + baselineOffset;
 
@@ -78,6 +75,7 @@ function drawText(doc, text, x, y, w, h, {
 
 /**
  * Generates an invoice PDF completely client-side matching the Anand Professionals & Law Advisors template.
+ * Fully supports Non-GST mode, IGST mode, and CGST+SGST mode with Service-wise Details and blank signature field.
  * @param {Object} invoiceData 
  * @returns {Promise<{ blob: Blob, url: string, fileName: string }>}
  */
@@ -103,9 +101,10 @@ export async function generateClientInvoicePdf(invoiceData) {
   const companyEmail = 'EMAIL - anand@apla.org.in';
   const companyGstin = '36AAPFA6515M1Z1';
 
-  const customerName = invoiceData.customerName ?? '';
-  const customerAddress = invoiceData.customerAddress ?? '';
-  const customerGstin = invoiceData.customerGstin ?? '';
+  // Client Details
+  const clientName = invoiceData.customerName || invoiceData.clientName || '';
+  const clientAddress = invoiceData.customerAddress || invoiceData.clientAddress || '';
+  const clientGstin = invoiceData.customerGstin || invoiceData.clientGstin || '';
   const placeOfSupply = invoiceData.placeOfSupply ?? '';
   const reverseCharge = invoiceData.reverseCharge ?? '';
 
@@ -117,14 +116,44 @@ export async function generateClientInvoicePdf(invoiceData) {
 
   const items = (invoiceData.items && invoiceData.items.length > 0) ? invoiceData.items : [];
 
-  const taxableAmount = invoiceData.taxableAmount !== undefined ? invoiceData.taxableAmount : items.reduce((acc, it) => acc + (parseFloat(it.cost) || 0), 0);
-  const cgst = invoiceData.cgst !== undefined ? invoiceData.cgst : Number((taxableAmount * 0.09).toFixed(2));
-  const sgst = invoiceData.sgst !== undefined ? invoiceData.sgst : Number((taxableAmount * 0.09).toFixed(2));
-  const totalAmount = invoiceData.totalAmount !== undefined ? invoiceData.totalAmount : Number((taxableAmount + cgst + sgst).toFixed(2));
+  // Determine GST Settings:
+  // If gstEnabled is explicitly false, GST is disabled.
+  const gstEnabled = invoiceData.gstEnabled !== undefined 
+    ? Boolean(invoiceData.gstEnabled)
+    : (invoiceData.cgst > 0 || invoiceData.sgst > 0 || Number(invoiceData.igst || 0) > 0 || invoiceData.taxableAmount === undefined);
+
+  const igstEnabled = gstEnabled && (invoiceData.igstEnabled !== undefined 
+    ? Boolean(invoiceData.igstEnabled) 
+    : (Number(invoiceData.igst || 0) > 0));
+
+  const igstRateVal = Number(invoiceData.igstRate) > 0 ? Number(invoiceData.igstRate) : 18;
+
+  const taxableAmount = invoiceData.taxableAmount !== undefined 
+    ? Number(invoiceData.taxableAmount) 
+    : items.reduce((acc, it) => acc + (parseFloat(it.cost) || 0), 0);
+
+  let cgst = 0;
+  let sgst = 0;
+  let igst = 0;
+
+  if (gstEnabled) {
+    if (igstEnabled) {
+      igst = invoiceData.igst !== undefined 
+        ? Number(invoiceData.igst) 
+        : Number((taxableAmount * (igstRateVal / 100)).toFixed(2));
+    } else {
+      cgst = invoiceData.cgst !== undefined ? Number(invoiceData.cgst) : Number((taxableAmount * 0.09).toFixed(2));
+      sgst = invoiceData.sgst !== undefined ? Number(invoiceData.sgst) : Number((taxableAmount * 0.09).toFixed(2));
+    }
+  }
+
+  const totalAmount = invoiceData.totalAmount !== undefined 
+    ? Number(invoiceData.totalAmount) 
+    : Number((taxableAmount + cgst + sgst + igst).toFixed(2));
 
   const defaultRemarks = items[0]?.description?.toLowerCase().includes('retainer')
     ? `Towards Retainer fee for the Month of ${invoiceDate ? (new Date(invoiceData.date || Date.now()).toLocaleString('default', { month: 'long', year: 'numeric' })).toUpperCase() : 'APRIL 2026'}`
-    : `Towards ${items[0]?.description || 'Professional Services'}`;
+    : `Towards ${items[0]?.description || 'Professional Advisory Services'}`;
   const remarks = invoiceData.remarks || defaultRemarks;
 
   const wordsAmount = numberToWords(totalAmount);
@@ -149,7 +178,7 @@ export async function generateClientInvoicePdf(invoiceData) {
   currentY += hRow3;
 
   // ==========================================
-  // SECTION 2: CUSTOMER & INVOICE DETAILS
+  // SECTION 2: CLIENT & INVOICE DETAILS
   // ==========================================
   const section2StartY = currentY;
   const leftColWidth = 323;
@@ -179,21 +208,21 @@ export async function generateClientInvoicePdf(invoiceData) {
   });
 
   // Left Column:
-  // Row A: Customer Details & Address (Height 58pt)
+  // Row A: Client Details & Address (Height 58pt)
   const custDetailsH = 58;
   drawBox(doc, startX, section2StartY, leftColWidth, custDetailsH);
-  drawText(doc, 'Customer Details:', startX, section2StartY + 1, leftColWidth, 12, { bold: true, size: 7.5, align: 'left', valign: 'top' });
-  drawText(doc, 'Customer Name:', startX, section2StartY + 13, 80, 12, { bold: true, size: 7, align: 'left', valign: 'top' });
-  drawText(doc, customerName, startX + 75, section2StartY + 13, leftColWidth - 78, 12, { bold: true, size: 7.2, align: 'center', valign: 'top' });
+  drawText(doc, 'Client Details:', startX, section2StartY + 1, leftColWidth, 12, { bold: true, size: 7.5, align: 'left', valign: 'top' });
+  drawText(doc, 'Client Name:', startX, section2StartY + 13, 80, 12, { bold: true, size: 7, align: 'left', valign: 'top' });
+  drawText(doc, clientName, startX + 75, section2StartY + 13, leftColWidth - 78, 12, { bold: true, size: 7.2, align: 'center', valign: 'top' });
   drawText(doc, 'Address:', startX, section2StartY + 25, 80, 12, { bold: true, size: 7, align: 'left', valign: 'top' });
-  drawText(doc, customerAddress, startX + 75, section2StartY + 25, leftColWidth - 78, 30, { bold: true, size: 6.8, align: 'center', valign: 'top', lineGap: 0.5 });
+  drawText(doc, clientAddress, startX + 75, section2StartY + 25, leftColWidth - 78, 30, { bold: true, size: 6.8, align: 'center', valign: 'top', lineGap: 0.5 });
 
-  // Row B: Customer GSTIN/ UID : (Height 19pt)
+  // Row B: Client GSTIN/ UID : (Height 19pt)
   const gstinY = section2StartY + custDetailsH;
   const gstinH = 19;
   drawBox(doc, startX, gstinY, leftColWidth, gstinH);
-  drawText(doc, 'Customer GSTIN/ UID :', startX, gstinY, 110, gstinH, { bold: true, size: 7.5, align: 'left' });
-  drawText(doc, customerGstin, startX + 110, gstinY, leftColWidth - 110, gstinH, { bold: true, size: 8, align: 'center' });
+  drawText(doc, 'Client GSTIN/ UID :', startX, gstinY, 110, gstinH, { bold: true, size: 7.5, align: 'left' });
+  drawText(doc, clientGstin, startX + 110, gstinY, leftColWidth - 110, gstinH, { bold: true, size: 8, align: 'center' });
 
   // Row C: Place of Supply & Reverse Charge (Height 28pt)
   const supplyY = gstinY + gstinH;
@@ -214,186 +243,304 @@ export async function generateClientInvoicePdf(invoiceData) {
   currentY = section2StartY + totalSec2H;
 
   // ==========================================
-  // SECTION 3: PRODUCT-WISE DETAILS BAR
+  // SECTION 3: SERVICE-WISE DETAILS BAR
   // ==========================================
   const prodBarH = 14;
   drawBox(doc, startX, currentY, totalWidth, prodBarH);
-  drawText(doc, 'Product-wise Details:', startX, currentY, totalWidth, prodBarH, { bold: true, size: 8, align: 'left' });
+  drawText(doc, 'Service-wise Details:', startX, currentY, totalWidth, prodBarH, { bold: true, size: 8, align: 'left' });
   currentY += prodBarH;
 
   // ==========================================
-  // SECTION 4: PRODUCT-WISE TABLE
+  // SECTION 4: TABLE (NON-GST / IGST / CGST+SGST)
   // ==========================================
-  const colDefs = [
-    { key: 'sr', w: 24 },
-    { key: 'desc', w: 100 },
-    { key: 'sac', w: 42 },
-    { key: 'qty', w: 20 },
-    { key: 'unit', w: 20 },
-    { key: 'rate', w: 40 },
-    { key: 'totalSale', w: 42 },
-    { key: 'disc', w: 25 },
-    { key: 'taxVal', w: 42 },
-    { key: 'cgstRate', w: 26 },
-    { key: 'cgstAmt', w: 34 },
-    { key: 'sgstRate', w: 26 },
-    { key: 'sgstAmt', w: 34 },
-    { key: 'igstRate', w: 26 },
-    { key: 'igstAmt', w: 30 }
-  ];
-
-  let cumX = startX;
-  colDefs.forEach(col => {
-    col.x = cumX;
-    cumX += col.w;
-  });
-
   const headerFill = '#EAEAEA';
-  const tblHeaderH1 = 15;
-  const tblHeaderH2 = 14;
-  const totalTblHeaderH = tblHeaderH1 + tblHeaderH2;
 
-  // Table Main Headers
-  const spanCols = [
-    { idx: 0, title: 'Sr. No.' },
-    { idx: 1, title: 'Product Description' },
-    { idx: 2, title: 'HSE/SAC\nCode' },
-    { idx: 3, title: 'Qty' },
-    { idx: 4, title: 'Unit' },
-    { idx: 5, title: 'Rate' },
-    { idx: 6, title: 'Total Sale' },
-    { idx: 7, title: 'Disc.' },
-    { idx: 8, title: 'Taxable\nValue' }
-  ];
-
-  spanCols.forEach(c => {
-    const col = colDefs[c.idx];
-    drawBox(doc, col.x, currentY, col.w, totalTblHeaderH, { fill: headerFill });
-    drawText(doc, c.title, col.x, currentY, col.w, totalTblHeaderH, { bold: true, size: 6.8, align: 'center', lineGap: 0.5 });
-  });
-
-  // Split Headers: CGST, SGST, IGST in Row 1
-  const taxHeaderDefs = [
-    { startIdx: 9, title: 'CGST', w: colDefs[9].w + colDefs[10].w },
-    { startIdx: 11, title: 'SGST', w: colDefs[11].w + colDefs[12].w },
-    { startIdx: 13, title: 'IGST', w: colDefs[13].w + colDefs[14].w }
-  ];
-
-  taxHeaderDefs.forEach(th => {
-    const x = colDefs[th.startIdx].x;
-    drawBox(doc, x, currentY, th.w, tblHeaderH1, { fill: headerFill });
-    drawText(doc, th.title, x, currentY, th.w, tblHeaderH1, { bold: true, size: 7.5, align: 'center' });
-  });
-
-  // Subheaders in Row 2
-  const subHeaderRowY = currentY + tblHeaderH1;
-  [9, 11, 13].forEach(idx => {
-    const rateCol = colDefs[idx];
-    const amtCol = colDefs[idx + 1];
-
-    drawBox(doc, rateCol.x, subHeaderRowY, rateCol.w, tblHeaderH2, { fill: headerFill });
-    drawText(doc, 'Rate %', rateCol.x, subHeaderRowY, rateCol.w, tblHeaderH2, { bold: true, size: 6.0, align: 'center' });
-
-    drawBox(doc, amtCol.x, subHeaderRowY, amtCol.w, tblHeaderH2, { fill: headerFill });
-    drawText(doc, 'Amount', amtCol.x, subHeaderRowY, amtCol.w, tblHeaderH2, { bold: true, size: 6.0, align: 'center' });
-  });
-
-  currentY += totalTblHeaderH;
-
-  // --- Body Item Rows ---
-  items.forEach((item, index) => {
-    const qty = parseInt(item.qty, 10) || 1;
-    const cost = parseFloat(item.cost) || 0;
-    const rate = item.rate !== undefined ? (parseFloat(item.rate) || 0) : (qty > 1 ? cost / qty : cost);
-    const lineTotal = item.totalSale !== undefined ? (parseFloat(item.totalSale) || 0) : (rate * qty || cost);
-    const itemRowH = 24;
-
-    colDefs.forEach(col => {
-      drawBox(doc, col.x, currentY, col.w, itemRowH);
+  if (!gstEnabled) {
+    // ------------------------------------------
+    // CASE A: GST DISABLED (No GST columns at all)
+    // ------------------------------------------
+    const cols = [
+      { key: 'sr', title: 'Sr. No.', w: 35 },
+      { key: 'desc', title: 'Service Description', w: 336 },
+      { key: 'sac', title: 'HSE/SAC Code', w: 70 },
+      { key: 'charges', title: 'Service Charges', w: 90 }
+    ];
+    let curX = startX;
+    cols.forEach(c => {
+      c.x = curX;
+      curX += c.w;
     });
 
-    drawText(doc, String(index + 1), colDefs[0].x, currentY, colDefs[0].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, item.description, colDefs[1].x, currentY, colDefs[1].w, itemRowH, { bold: true, size: 6.8, align: 'center', lineGap: 0.8 });
-    drawText(doc, item.hseSacCode || '998311', colDefs[2].x, currentY, colDefs[2].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, String(qty), colDefs[3].x, currentY, colDefs[3].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, item.unit || '-', colDefs[4].x, currentY, colDefs[4].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(rate), colDefs[5].x, currentY, colDefs[5].w, itemRowH, { size: 7.5, align: 'right' });
-    drawText(doc, formatIndianNumber(lineTotal), colDefs[6].x, currentY, colDefs[6].w, itemRowH, { size: 7.5, align: 'right' });
-    drawText(doc, item.disc || '-', colDefs[7].x, currentY, colDefs[7].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(lineTotal), colDefs[8].x, currentY, colDefs[8].w, itemRowH, { size: 7.5, align: 'right' });
-    drawText(doc, '9%', colDefs[9].x, currentY, colDefs[9].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(lineTotal * 0.09), colDefs[10].x, currentY, colDefs[10].w, itemRowH, { size: 7.5, align: 'right' });
-    drawText(doc, '9%', colDefs[11].x, currentY, colDefs[11].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(lineTotal * 0.09), colDefs[12].x, currentY, colDefs[12].w, itemRowH, { size: 7.5, align: 'right' });
-    drawText(doc, '0%', colDefs[13].x, currentY, colDefs[13].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, '-', colDefs[14].x, currentY, colDefs[14].w, itemRowH, { size: 7.5, align: 'center' });
-
-    currentY += itemRowH;
-  });
-
-  // Filler rows if fewer than 3 items
-  const fillerRowsCount = Math.max(0, 3 - items.length);
-  for (let f = 0; f < fillerRowsCount; f++) {
-    const fillerH = 15;
-    colDefs.forEach(col => {
-      drawBox(doc, col.x, currentY, col.w, fillerH);
-      drawText(doc, '-', col.x, currentY, col.w, fillerH, { size: 7.5, align: 'center' });
+    const tblH = 22;
+    cols.forEach(c => {
+      drawBox(doc, c.x, currentY, c.w, tblH, { fill: headerFill });
+      drawText(doc, c.title, c.x, currentY, c.w, tblH, { bold: true, size: 7.5, align: 'center' });
     });
-    currentY += fillerH;
+    currentY += tblH;
+
+    // Body Item Rows
+    items.forEach((item, index) => {
+      const cost = parseFloat(item.cost) || 0;
+      const itemRowH = 24;
+
+      cols.forEach(c => drawBox(doc, c.x, currentY, c.w, itemRowH));
+      drawText(doc, String(index + 1), cols[0].x, currentY, cols[0].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, item.description, cols[1].x, currentY, cols[1].w, itemRowH, { bold: true, size: 7.2, align: 'left', lineGap: 0.8 });
+      drawText(doc, item.hseSacCode || '998311', cols[2].x, currentY, cols[2].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, formatIndianNumber(cost), cols[3].x, currentY, cols[3].w, itemRowH, { size: 7.5, align: 'right' });
+
+      currentY += itemRowH;
+    });
+
+    // Filler Rows if fewer than 3 items
+    const fillerCount = Math.max(0, 3 - items.length);
+    for (let f = 0; f < fillerCount; f++) {
+      const fillerH = 16;
+      cols.forEach(c => {
+        drawBox(doc, c.x, currentY, c.w, fillerH);
+        drawText(doc, '-', c.x, currentY, c.w, fillerH, { size: 7.5, align: 'center' });
+      });
+      currentY += fillerH;
+    }
+
+    // Total Row
+    const totalRowH = 16;
+    const preW = cols[0].w + cols[1].w + cols[2].w; // 441
+    drawBox(doc, startX, currentY, preW, totalRowH);
+    drawText(doc, 'Total', startX, currentY, preW, totalRowH, { bold: true, size: 7.5, align: 'center' });
+
+    drawBox(doc, cols[3].x, currentY, cols[3].w, totalRowH);
+    drawText(doc, formatIndianNumber(taxableAmount), cols[3].x, currentY, cols[3].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
+
+    currentY += totalRowH;
+
+  } else if (igstEnabled) {
+    // ------------------------------------------
+    // CASE B: IGST ENABLED (Inter-state)
+    // ------------------------------------------
+    const cols = [
+      { key: 'sr', title: 'Sr. No.', w: 30 },
+      { key: 'desc', title: 'Service Description', w: 261 },
+      { key: 'sac', title: 'HSE/SAC Code', w: 65 },
+      { key: 'charges', title: 'Service Charges', w: 75 },
+      { key: 'igstRate', title: 'Rate %', w: 45 },
+      { key: 'igstAmt', title: 'Amount', w: 55 }
+    ];
+    let curX = startX;
+    cols.forEach(c => {
+      c.x = curX;
+      curX += c.w;
+    });
+
+    const tblHeaderH1 = 15;
+    const tblHeaderH2 = 14;
+    const totalHeaderH = tblHeaderH1 + tblHeaderH2;
+
+    for (let i = 0; i < 4; i++) {
+      drawBox(doc, cols[i].x, currentY, cols[i].w, totalHeaderH, { fill: headerFill });
+      drawText(doc, cols[i].title, cols[i].x, currentY, cols[i].w, totalHeaderH, { bold: true, size: 7.2, align: 'center' });
+    }
+
+    // IGST header row 1
+    const igstW = cols[4].w + cols[5].w;
+    drawBox(doc, cols[4].x, currentY, igstW, tblHeaderH1, { fill: headerFill });
+    drawText(doc, 'IGST', cols[4].x, currentY, igstW, tblHeaderH1, { bold: true, size: 7.5, align: 'center' });
+
+    // IGST subheaders row 2
+    drawBox(doc, cols[4].x, currentY + tblHeaderH1, cols[4].w, tblHeaderH2, { fill: headerFill });
+    drawText(doc, 'Rate %', cols[4].x, currentY + tblHeaderH1, cols[4].w, tblHeaderH2, { bold: true, size: 6.5, align: 'center' });
+
+    drawBox(doc, cols[5].x, currentY + tblHeaderH1, cols[5].w, tblHeaderH2, { fill: headerFill });
+    drawText(doc, 'Amount', cols[5].x, currentY + tblHeaderH1, cols[5].w, tblHeaderH2, { bold: true, size: 6.5, align: 'center' });
+
+    currentY += totalHeaderH;
+
+    // Body Item Rows
+    items.forEach((item, index) => {
+      const cost = parseFloat(item.cost) || 0;
+      const lineIgst = Number((cost * (igstRateVal / 100)).toFixed(2));
+      const itemRowH = 24;
+
+      cols.forEach(c => drawBox(doc, c.x, currentY, c.w, itemRowH));
+      drawText(doc, String(index + 1), cols[0].x, currentY, cols[0].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, item.description, cols[1].x, currentY, cols[1].w, itemRowH, { bold: true, size: 7.0, align: 'left', lineGap: 0.8 });
+      drawText(doc, item.hseSacCode || '998311', cols[2].x, currentY, cols[2].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, formatIndianNumber(cost), cols[3].x, currentY, cols[3].w, itemRowH, { size: 7.5, align: 'right' });
+      drawText(doc, `${igstRateVal}%`, cols[4].x, currentY, cols[4].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, formatIndianNumber(lineIgst), cols[5].x, currentY, cols[5].w, itemRowH, { size: 7.5, align: 'right' });
+
+      currentY += itemRowH;
+    });
+
+    // Filler Rows
+    const fillerCount = Math.max(0, 3 - items.length);
+    for (let f = 0; f < fillerCount; f++) {
+      const fillerH = 16;
+      cols.forEach(c => {
+        drawBox(doc, c.x, currentY, c.w, fillerH);
+        drawText(doc, '-', c.x, currentY, c.w, fillerH, { size: 7.5, align: 'center' });
+      });
+      currentY += fillerH;
+    }
+
+    // Total Row
+    const totalRowH = 16;
+    const preW = cols[0].w + cols[1].w + cols[2].w; // 356
+    drawBox(doc, startX, currentY, preW, totalRowH);
+    drawText(doc, 'Total', startX, currentY, preW, totalRowH, { bold: true, size: 7.5, align: 'center' });
+
+    drawBox(doc, cols[3].x, currentY, cols[3].w, totalRowH);
+    drawText(doc, formatIndianNumber(taxableAmount), cols[3].x, currentY, cols[3].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
+
+    drawBox(doc, cols[4].x, currentY, cols[4].w, totalRowH);
+    drawText(doc, '-', cols[4].x, currentY, cols[4].w, totalRowH, { size: 7.5, align: 'center' });
+
+    drawBox(doc, cols[5].x, currentY, cols[5].w, totalRowH);
+    drawText(doc, formatIndianNumber(igst), cols[5].x, currentY, cols[5].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
+
+    currentY += totalRowH;
+
+  } else {
+    // ------------------------------------------
+    // CASE C: CGST + SGST ENABLED (Intra-state)
+    // ------------------------------------------
+    const cols = [
+      { key: 'sr', title: 'Sr. No.', w: 28 },
+      { key: 'desc', title: 'Service Description', w: 213 },
+      { key: 'sac', title: 'HSE/SAC Code', w: 60 },
+      { key: 'charges', title: 'Service Charges', w: 70 },
+      { key: 'cgstRate', title: 'Rate %', w: 35 },
+      { key: 'cgstAmt', title: 'Amount', w: 45 },
+      { key: 'sgstRate', title: 'Rate %', w: 35 },
+      { key: 'sgstAmt', title: 'Amount', w: 45 }
+    ];
+    let curX = startX;
+    cols.forEach(c => {
+      c.x = curX;
+      curX += c.w;
+    });
+
+    const tblHeaderH1 = 15;
+    const tblHeaderH2 = 14;
+    const totalHeaderH = tblHeaderH1 + tblHeaderH2;
+
+    for (let i = 0; i < 4; i++) {
+      drawBox(doc, cols[i].x, currentY, cols[i].w, totalHeaderH, { fill: headerFill });
+      drawText(doc, cols[i].title, cols[i].x, currentY, cols[i].w, totalHeaderH, { bold: true, size: 7.2, align: 'center' });
+    }
+
+    // CGST
+    const cgstW = cols[4].w + cols[5].w;
+    drawBox(doc, cols[4].x, currentY, cgstW, tblHeaderH1, { fill: headerFill });
+    drawText(doc, 'CGST', cols[4].x, currentY, cgstW, tblHeaderH1, { bold: true, size: 7.5, align: 'center' });
+    drawBox(doc, cols[4].x, currentY + tblHeaderH1, cols[4].w, tblHeaderH2, { fill: headerFill });
+    drawText(doc, 'Rate %', cols[4].x, currentY + tblHeaderH1, cols[4].w, tblHeaderH2, { bold: true, size: 6.5, align: 'center' });
+    drawBox(doc, cols[5].x, currentY + tblHeaderH1, cols[5].w, tblHeaderH2, { fill: headerFill });
+    drawText(doc, 'Amount', cols[5].x, currentY + tblHeaderH1, cols[5].w, tblHeaderH2, { bold: true, size: 6.5, align: 'center' });
+
+    // SGST
+    const sgstW = cols[6].w + cols[7].w;
+    drawBox(doc, cols[6].x, currentY, sgstW, tblHeaderH1, { fill: headerFill });
+    drawText(doc, 'SGST', cols[6].x, currentY, sgstW, tblHeaderH1, { bold: true, size: 7.5, align: 'center' });
+    drawBox(doc, cols[6].x, currentY + tblHeaderH1, cols[6].w, tblHeaderH2, { fill: headerFill });
+    drawText(doc, 'Rate %', cols[6].x, currentY + tblHeaderH1, cols[6].w, tblHeaderH2, { bold: true, size: 6.5, align: 'center' });
+    drawBox(doc, cols[7].x, currentY + tblHeaderH1, cols[7].w, tblHeaderH2, { fill: headerFill });
+    drawText(doc, 'Amount', cols[7].x, currentY + tblHeaderH1, cols[7].w, tblHeaderH2, { bold: true, size: 6.5, align: 'center' });
+
+    currentY += totalHeaderH;
+
+    // Body Item Rows
+    items.forEach((item, index) => {
+      const cost = parseFloat(item.cost) || 0;
+      const lineCgst = Number((cost * 0.09).toFixed(2));
+      const lineSgst = Number((cost * 0.09).toFixed(2));
+      const itemRowH = 24;
+
+      cols.forEach(c => drawBox(doc, c.x, currentY, c.w, itemRowH));
+      drawText(doc, String(index + 1), cols[0].x, currentY, cols[0].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, item.description, cols[1].x, currentY, cols[1].w, itemRowH, { bold: true, size: 6.8, align: 'left', lineGap: 0.8 });
+      drawText(doc, item.hseSacCode || '998311', cols[2].x, currentY, cols[2].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, formatIndianNumber(cost), cols[3].x, currentY, cols[3].w, itemRowH, { size: 7.5, align: 'right' });
+      drawText(doc, '9%', cols[4].x, currentY, cols[4].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, formatIndianNumber(lineCgst), cols[5].x, currentY, cols[5].w, itemRowH, { size: 7.5, align: 'right' });
+      drawText(doc, '9%', cols[6].x, currentY, cols[6].w, itemRowH, { size: 7.5, align: 'center' });
+      drawText(doc, formatIndianNumber(lineSgst), cols[7].x, currentY, cols[7].w, itemRowH, { size: 7.5, align: 'right' });
+
+      currentY += itemRowH;
+    });
+
+    // Filler Rows
+    const fillerCount = Math.max(0, 3 - items.length);
+    for (let f = 0; f < fillerCount; f++) {
+      const fillerH = 16;
+      cols.forEach(c => {
+        drawBox(doc, c.x, currentY, c.w, fillerH);
+        drawText(doc, '-', c.x, currentY, c.w, fillerH, { size: 7.5, align: 'center' });
+      });
+      currentY += fillerH;
+    }
+
+    // Total Row
+    const totalRowH = 16;
+    const preW = cols[0].w + cols[1].w + cols[2].w; // 301
+    drawBox(doc, startX, currentY, preW, totalRowH);
+    drawText(doc, 'Total', startX, currentY, preW, totalRowH, { bold: true, size: 7.5, align: 'center' });
+
+    drawBox(doc, cols[3].x, currentY, cols[3].w, totalRowH);
+    drawText(doc, formatIndianNumber(taxableAmount), cols[3].x, currentY, cols[3].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
+
+    drawBox(doc, cols[4].x, currentY, cols[4].w, totalRowH);
+    drawText(doc, '-', cols[4].x, currentY, cols[4].w, totalRowH, { size: 7.5, align: 'center' });
+
+    drawBox(doc, cols[5].x, currentY, cols[5].w, totalRowH);
+    drawText(doc, formatIndianNumber(cgst), cols[5].x, currentY, cols[5].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
+
+    drawBox(doc, cols[6].x, currentY, cols[6].w, totalRowH);
+    drawText(doc, '-', cols[6].x, currentY, cols[6].w, totalRowH, { size: 7.5, align: 'center' });
+
+    drawBox(doc, cols[7].x, currentY, cols[7].w, totalRowH);
+    drawText(doc, formatIndianNumber(sgst), cols[7].x, currentY, cols[7].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
+
+    currentY += totalRowH;
   }
-
-  // --- Total Row ---
-  const totalRowH = 16;
-  const preTotalW = colDefs[0].w + colDefs[1].w + colDefs[2].w + colDefs[3].w + colDefs[4].w; // 206
-  drawBox(doc, startX, currentY, preTotalW, totalRowH);
-
-  drawBox(doc, colDefs[5].x, currentY, colDefs[5].w, totalRowH);
-  drawText(doc, 'Total', colDefs[5].x, currentY, colDefs[5].w, totalRowH, { bold: true, size: 7.5, align: 'center' });
-
-  drawBox(doc, colDefs[6].x, currentY, colDefs[6].w, totalRowH);
-  drawText(doc, formatIndianNumber(taxableAmount), colDefs[6].x, currentY, colDefs[6].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
-
-  drawBox(doc, colDefs[7].x, currentY, colDefs[7].w, totalRowH);
-  drawText(doc, '-', colDefs[7].x, currentY, colDefs[7].w, totalRowH, { size: 7.5, align: 'center' });
-
-  drawBox(doc, colDefs[8].x, currentY, colDefs[8].w, totalRowH);
-  drawText(doc, formatIndianNumber(taxableAmount), colDefs[8].x, currentY, colDefs[8].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
-
-  drawBox(doc, colDefs[9].x, currentY, colDefs[9].w, totalRowH);
-
-  drawBox(doc, colDefs[10].x, currentY, colDefs[10].w, totalRowH);
-  drawText(doc, formatIndianNumber(cgst), colDefs[10].x, currentY, colDefs[10].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
-
-  drawBox(doc, colDefs[11].x, currentY, colDefs[11].w, totalRowH);
-
-  drawBox(doc, colDefs[12].x, currentY, colDefs[12].w, totalRowH);
-  drawText(doc, formatIndianNumber(sgst), colDefs[12].x, currentY, colDefs[12].w, totalRowH, { bold: true, size: 7.5, align: 'right' });
-
-  drawBox(doc, colDefs[13].x, currentY, colDefs[13].w, totalRowH);
-
-  drawBox(doc, colDefs[14].x, currentY, colDefs[14].w, totalRowH);
-  drawText(doc, '-', colDefs[14].x, currentY, colDefs[14].w, totalRowH, { size: 7.5, align: 'center' });
-
-  currentY += totalRowH;
 
   // ==========================================
   // SECTION 5: REMARKS & SUMMARY
   // ==========================================
   const sec5StartY = currentY;
-  const remarksW = colDefs[8].x - startX; // 333
+  const remarksW = 333;
   const summaryW = totalWidth - remarksW; // 198
-  const summarySplitX = colDefs[8].x; // 365
+  const summarySplitX = startX + remarksW; // 365
 
-  const summaryRows = [
-    { label: 'Total Invoice Value', val: formatIndianNumber(taxableAmount), bold: false },
-    { label: 'Online Charges', val: '-', bold: false },
-    { label: 'Total Discounts', val: '-', bold: false },
-    { label: 'Total Taxable Value', val: formatIndianNumber(taxableAmount), bold: false },
-    { label: 'Total CGST', val: formatIndianNumber(cgst), bold: false },
-    { label: 'Total SGST', val: formatIndianNumber(sgst), bold: false },
-    { label: 'Total IGST', val: '-', bold: false },
-    { label: 'Grand Total', val: formatIndianNumber(totalAmount), bold: true }
-  ];
+  // Summary Rows dynamically constructed
+  let summaryRows = [];
+  if (!gstEnabled) {
+    summaryRows = [
+      { label: 'Total Invoice Value', val: formatIndianNumber(taxableAmount), bold: false },
+      { label: 'Online Charges', val: '-', bold: false },
+      { label: 'Total Discounts', val: '-', bold: false },
+      { label: 'Grand Total', val: formatIndianNumber(totalAmount), bold: true }
+    ];
+  } else if (igstEnabled) {
+    summaryRows = [
+      { label: 'Total Invoice Value', val: formatIndianNumber(taxableAmount), bold: false },
+      { label: 'Online Charges', val: '-', bold: false },
+      { label: 'Total Discounts', val: '-', bold: false },
+      { label: 'Total Taxable Value', val: formatIndianNumber(taxableAmount), bold: false },
+      { label: `Total IGST (${igstRateVal}%)`, val: formatIndianNumber(igst), bold: false },
+      { label: 'Grand Total', val: formatIndianNumber(totalAmount), bold: true }
+    ];
+  } else {
+    summaryRows = [
+      { label: 'Total Invoice Value', val: formatIndianNumber(taxableAmount), bold: false },
+      { label: 'Online Charges', val: '-', bold: false },
+      { label: 'Total Discounts', val: '-', bold: false },
+      { label: 'Total Taxable Value', val: formatIndianNumber(taxableAmount), bold: false },
+      { label: 'Total CGST (9%)', val: formatIndianNumber(cgst), bold: false },
+      { label: 'Total SGST (9%)', val: formatIndianNumber(sgst), bold: false },
+      { label: 'Grand Total', val: formatIndianNumber(totalAmount), bold: true }
+    ];
+  }
 
   const sRowH = 13.5;
   const summaryHeaderH = 14;
@@ -420,10 +567,10 @@ export async function generateClientInvoicePdf(invoiceData) {
   summaryRows.forEach((sr, idx) => {
     const rY = sec5StartY + summaryHeaderH + idx * sRowH;
     drawBox(doc, summarySplitX, rY, summaryLblW, sRowH);
-    drawText(doc, sr.label, summarySplitX, rY, summaryLblW, sRowH, { bold: sr.bold, size: 7.5, align: 'right' });
+    drawText(doc, sr.label, summarySplitX, rY, summaryLblW, sRowH, { bold: sr.bold, size: 7.2, align: 'right' });
 
     drawBox(doc, sAmtX, rY, summaryAmtW, sRowH);
-    drawText(doc, sr.val, sAmtX, rY, summaryAmtW, sRowH, { bold: sr.bold, size: 7.5, align: 'right' });
+    drawText(doc, sr.val, sAmtX, rY, summaryAmtW, sRowH, { bold: sr.bold, size: 7.2, align: 'right' });
   });
 
   currentY = sec5StartY + sec5TotalH;
@@ -455,6 +602,7 @@ export async function generateClientInvoicePdf(invoiceData) {
 
   // ==========================================
   // SECTION 8: DECLARATION & SIGNATURE
+  // Digital signature field is left completely blank as requested
   // ==========================================
   const declH = 64;
   const declSplitX = startX + 335;
@@ -462,14 +610,10 @@ export async function generateClientInvoicePdf(invoiceData) {
   drawBox(doc, startX, currentY, 335, declH);
   drawText(doc, 'Declaration', startX, currentY + 3, 335, 12, { bold: true, size: 7.5, align: 'center', valign: 'top' });
   drawText(doc, 'we declare that this invoice raised is Correct and that all particulars given are True', startX, currentY + 16, 335, 12, { size: 6.8, align: 'center', valign: 'top' });
-  drawText(doc, "Customer's Seal and Signature", startX, currentY, 335, declH, { size: 7.5, align: 'left', valign: 'bottom' });
+  drawText(doc, "Client's Seal and Signature", startX, currentY, 335, declH, { size: 7.5, align: 'left', valign: 'bottom' });
 
+  // Signature box on the right: signature area is left blank, only Authorised Signatory label at the bottom
   drawBox(doc, declSplitX, currentY, totalWidth - 335, declH);
-  drawText(doc, 'KASARABADA\nSATCHIDANAND', declSplitX + 8, currentY + 8, 90, 24, { bold: true, size: 9, align: 'left', valign: 'top', lineGap: 1 });
-
-  const sigTimestamp = getDigitalSignatureTimestamp();
-  const digitalText = `Digitally signed by\nKASARABADA\nSATCHIDANAND\nDate: ${sigTimestamp}`;
-  drawText(doc, digitalText, declSplitX + 90, currentY + 5, (totalWidth - 335) - 94, 40, { size: 6.2, align: 'left', valign: 'top', lineGap: 0.8 });
   drawText(doc, 'Authorised Signatory', declSplitX, currentY, totalWidth - 335, declH, { bold: true, size: 7.5, align: 'center', valign: 'bottom' });
 
   currentY += declH;

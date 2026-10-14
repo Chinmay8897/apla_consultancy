@@ -137,10 +137,14 @@ export default function App() {
       id: 'item-1',
       description: 'Professional Legal Advisory & Consulting Services',
       hseSacCode: '998311',
-      cost: '50000',
-      qty: 1
+      cost: '50000'
     }
   ]);
+
+  // GST & IGST Tax Configuration States
+  const [gstEnabled, setGstEnabled] = useState(true);
+  const [igstEnabled, setIgstEnabled] = useState(false);
+  const [igstRate, setIgstRate] = useState(18);
 
   // Loading & Success States
   const [isGenerating, setIsGenerating] = useState(false);
@@ -183,14 +187,25 @@ export default function App() {
 
   // --- Mathematical Real-time Calculations ---
   const taxableAmount = items.reduce((sum, item) => {
-    const unitCost = parseFloat(item.cost) || 0;
-    const quantity = parseInt(item.qty, 10) || 1;
-    return sum + Math.max(0, unitCost * quantity);
+    const serviceCost = parseFloat(item.cost) || 0;
+    return sum + Math.max(0, serviceCost);
   }, 0);
 
-  const cgst = Number((taxableAmount * 0.09).toFixed(2));
-  const sgst = Number((taxableAmount * 0.09).toFixed(2));
-  const grandTotal = Number((taxableAmount + cgst + sgst).toFixed(2));
+  let cgst = 0;
+  let sgst = 0;
+  let igst = 0;
+
+  if (gstEnabled) {
+    if (igstEnabled) {
+      const rate = parseFloat(igstRate) >= 0 ? parseFloat(igstRate) : 18;
+      igst = Number((taxableAmount * (rate / 100)).toFixed(2));
+    } else {
+      cgst = Number((taxableAmount * 0.09).toFixed(2));
+      sgst = Number((taxableAmount * 0.09).toFixed(2));
+    }
+  }
+
+  const grandTotal = Number((taxableAmount + cgst + sgst + igst).toFixed(2));
 
   // --- Item Handlers ---
   const handleAddServiceItem = () => {
@@ -198,8 +213,7 @@ export default function App() {
       id: `item-${Date.now()}`,
       description: '',
       hseSacCode: '',
-      cost: '',
-      qty: 1
+      cost: ''
     };
     setItems((prev) => [...prev, newItem]);
   };
@@ -247,9 +261,13 @@ export default function App() {
         poDate: inv.poDate,
         grn: inv.grn,
         remarks: inv.remarks,
+        gstEnabled: inv.gstEnabled !== undefined ? inv.gstEnabled : (inv.cgst > 0 || inv.sgst > 0 || Number(inv.igst || 0) > 0 || inv.taxableAmount === undefined),
+        igstEnabled: inv.igstEnabled !== undefined ? inv.igstEnabled : (Number(inv.igst || 0) > 0),
+        igstRate: inv.igstRate || 18,
         taxableAmount: inv.taxableAmount,
         cgst: inv.cgst,
         sgst: inv.sgst,
+        igst: inv.igst || 0,
         totalAmount: inv.totalAmount,
         items: inv.items || []
       };
@@ -285,14 +303,14 @@ export default function App() {
     if (e && e.preventDefault) e.preventDefault();
 
     if (!customerName.trim()) {
-      addToast('error', 'Missing Customer', 'Please enter a Customer Name before issuing.');
-      const custInput = document.getElementById('customer-name-input');
+      addToast('error', 'Missing Client', 'Please enter a Client Name before issuing.');
+      const custInput = document.getElementById('client-name-input');
       if (custInput) custInput.focus();
       return;
     }
 
     if (items.length === 0) {
-      addToast('error', 'Empty Invoice', 'Please add at least one product or service item.');
+      addToast('error', 'Empty Invoice', 'Please add at least one service item.');
       return;
     }
 
@@ -301,7 +319,7 @@ export default function App() {
     );
 
     if (hasInvalid) {
-      addToast('error', 'Invalid Items', 'Ensure all line items have descriptions and valid positive costs.');
+      addToast('error', 'Invalid Items', 'Ensure all line items have descriptions and valid positive service charges.');
       return;
     }
 
@@ -322,20 +340,20 @@ export default function App() {
         poDate: poDate.trim() || undefined,
         grn: grn.trim() || undefined,
         remarks: productBrief.trim() || undefined,
+        gstEnabled,
+        igstEnabled,
+        igstRate: igstEnabled ? (parseFloat(igstRate) || 18) : 0,
         taxableAmount,
         cgst,
         sgst,
+        igst,
         totalAmount: grandTotal,
         items: items.map((i) => {
-          const qty = parseInt(i.qty, 10) || 1;
-          const unitRate = parseFloat(i.cost) || 0;
+          const serviceCost = parseFloat(i.cost) || 0;
           return {
             description: i.description.trim(),
             hseSacCode: i.hseSacCode?.trim() || '998311',
-            qty,
-            rate: unitRate,
-            cost: unitRate * qty,
-            totalSale: unitRate * qty
+            cost: serviceCost
           };
         })
       };
@@ -398,7 +416,7 @@ export default function App() {
               items: items.map((i) => ({
                 description: i.description.trim(),
                 hseSacCode: i.hseSacCode?.trim() || '998311',
-                cost: (parseFloat(i.cost) || 0) * (parseInt(i.qty, 10) || 1)
+                cost: parseFloat(i.cost) || 0
               })),
               pdfPath: clientPdf?.fileName || `${invoiceNumber}.pdf`,
               excelPath: clientExcel?.fileName || `${invoiceNumber}.xlsx`
@@ -854,7 +872,7 @@ export default function App() {
                       New Invoice
                     </h2>
                     <p className="text-xs text-slate-500 mt-1 m-0">
-                      Choose the customer and products. Prices, HSN and GST fill in by themselves.
+                      Choose the client and services. Service charges, HSN and GST calculate automatically.
                     </p>
                   </div>
                   <div className="text-xs font-semibold text-slate-400">
@@ -868,27 +886,27 @@ export default function App() {
                   {/* Left Main Form Column (8 cols) */}
                   <form onSubmit={handleIssueInvoice} className="lg:col-span-8 space-y-5">
 
-                    {/* Card 1: Customer Card */}
+                    {/* Card 1: Client Card */}
                     <div className="light-card p-5 space-y-3">
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Customer
+                        Client
                       </label>
                       <div>
                         <input
-                          id="customer-name-input"
+                          id="client-name-input"
                           type="text"
-                          placeholder="Search by name, phone, email or GSTIN..."
+                          placeholder="Search or enter client name, phone, email or GSTIN..."
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
                           className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm bg-white placeholder:text-slate-400 text-slate-900 focus:outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/10 transition shadow-2xs"
                         />
                       </div>
 
-                      {/* Additional Customer metadata detail fields */}
+                      {/* Additional Client metadata detail fields */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                            Customer Email
+                            Client Email
                           </label>
                           <input
                             type="email"
@@ -901,7 +919,7 @@ export default function App() {
 
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                            Customer GSTIN (Optional)
+                            Client GSTIN (Optional)
                           </label>
                           <input
                             type="text"
@@ -914,7 +932,7 @@ export default function App() {
 
                         <div className="sm:col-span-2">
                           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                            Billing Address (Optional)
+                            Client Address (Optional)
                           </label>
                           <input
                             type="text"
@@ -954,45 +972,39 @@ export default function App() {
 
                     </div>
 
-                    {/* Card 2: Line Items & Add Service Section */}
+                    {/* Card 2: Service-wise Details */}
                     <div className="light-card p-5 space-y-4">
 
-                      {/* Search / Add Actions Bar */}
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                        <div className="relative flex-1">
-                          <input
-                            type="text"
-                            placeholder="Search product, model or scan a barcode..."
-                            className="w-full rounded-lg border border-slate-200 px-3.5 py-2 text-xs bg-slate-50/50 placeholder:text-slate-400 text-slate-800 focus:outline-none focus:border-teal-700 focus:bg-white transition"
-                          />
-                        </div>
-
+                      {/* Header and Add Action */}
+                      <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider m-0">
+                          Service-wise Details
+                        </h3>
                         <button
                           type="button"
                           onClick={handleAddServiceItem}
-                          className="inline-flex items-center justify-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200/80 transition active:scale-98 shrink-0"
+                          className="inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200/80 transition active:scale-98 shrink-0"
                         >
                           <Plus className="w-3.5 h-3.5 text-teal-700" />
-                          <span> Add Service</span>
+                          <span>Add Service</span>
                         </button>
                       </div>
 
                       {/* Line Items Table or Empty State */}
                       {items.length === 0 ? (
                         <div className="text-center py-10 px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
-                          <p className="text-sm font-semibold text-slate-700 m-0">No products or services yet</p>
+                          <p className="text-sm font-semibold text-slate-700 m-0">No services added yet</p>
                           <p className="text-xs text-slate-400 mt-1 m-0">
-                            Search above to add the first item, or use + Add Service.
+                            Use + Add Service to add the first service to this invoice.
                           </p>
                         </div>
                       ) : (
                         <div className="space-y-2.5 pt-1">
                           {/* Desktop Table Column Headers */}
                           <div className="hidden sm:grid grid-cols-12 text-[11px] font-bold uppercase tracking-wider text-slate-400 pb-1.5 border-b border-slate-100 px-2">
-                            <span className="col-span-6">Description</span>
+                            <span className="col-span-6">Service Description</span>
                             <span className="col-span-2 text-center">HSN / SAC</span>
-                            <span className="col-span-1 text-center">Qty</span>
-                            <span className="col-span-2 text-right">Rate (₹)</span>
+                            <span className="col-span-3 text-right">Service Charges (₹)</span>
                             <span className="col-span-1 text-center">Del</span>
                           </div>
 
@@ -1009,87 +1021,73 @@ export default function App() {
                                 {/* Mobile Header indicator with delete button */}
                                 <div className="flex sm:hidden items-center justify-between pb-1 border-b border-slate-100">
                                   <span className="text-[11px] font-bold text-slate-500">
-                                    Item #{index + 1}
+                                    Service #{index + 1}
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveItem(item.id)}
-                                    title="Delete Item"
+                                    title="Delete Service"
                                     className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
 
-                                {/* Description */}
+                                {/* Service Description */}
                                 <div className="sm:col-span-6">
                                   <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1">
-                                    Description *
+                                    Service Description *
                                   </label>
                                   <input
                                     type="text"
                                     required
-                                    placeholder="e.g. Annual System Audit"
+                                    placeholder="e.g. Retainer fee / Legal Advisory Services"
                                     value={item.description}
                                     onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
                                     className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-teal-700 transition"
                                   />
                                 </div>
 
-                                {/* Mobile 3-column subgrid (HSN, Qty, Rate) / Desktop individual columns */}
-                                <div className="grid grid-cols-11 gap-2 items-center sm:contents">
-                                  <div className="col-span-4 sm:col-span-2">
-                                    <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-center">
-                                      HSN / SAC
-                                    </label>
-                                    <input
-                                      type="text"
-                                      placeholder="998311"
-                                      value={item.hseSacCode}
-                                      onChange={(e) => handleItemChange(item.id, 'hseSacCode', e.target.value)}
-                                      className="w-full text-center rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-teal-700 transition"
-                                    />
-                                  </div>
+                                {/* HSN / SAC */}
+                                <div className="sm:col-span-2">
+                                  <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-center">
+                                    HSN / SAC
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="998311"
+                                    value={item.hseSacCode}
+                                    onChange={(e) => handleItemChange(item.id, 'hseSacCode', e.target.value)}
+                                    className="w-full text-center rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-teal-700 transition"
+                                  />
+                                </div>
 
-                                  <div className="col-span-3 sm:col-span-1">
-                                    <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-center">
-                                      Qty
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      value={item.qty || 1}
-                                      onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
-                                      className="w-full text-center rounded-md border border-slate-200 px-1 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-teal-700 transition"
-                                    />
-                                  </div>
+                                {/* Service Charges (₹) */}
+                                <div className="sm:col-span-3">
+                                  <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-right">
+                                    Service Charges (₹) *
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    placeholder="0.00"
+                                    value={item.cost}
+                                    onChange={(e) => handleItemChange(item.id, 'cost', e.target.value)}
+                                    className="w-full text-right rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-teal-700 transition"
+                                  />
+                                </div>
 
-                                  <div className="col-span-4 sm:col-span-2">
-                                    <label className="block sm:hidden text-[10px] font-semibold text-slate-400 mb-1 text-right">
-                                      Rate (₹)
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      required
-                                      placeholder="0.00"
-                                      value={item.cost}
-                                      onChange={(e) => handleItemChange(item.id, 'cost', e.target.value)}
-                                      className="w-full text-right rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-teal-700 transition"
-                                    />
-                                  </div>
-
-                                  <div className="hidden sm:flex col-span-1 justify-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveItem(item.id)}
-                                      title="Delete Item"
-                                      className="p-1.5 rounded transition text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                                <div className="hidden sm:flex col-span-1 justify-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveItem(item.id)}
+                                    title="Delete Service"
+                                    className="p-1.5 rounded transition text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
                               </motion.div>
                             ))}
@@ -1235,7 +1233,7 @@ export default function App() {
                       {/* Row 3: Ship to */}
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                          Ship to (leave blank to use the customer's address)
+                          Ship to (leave blank to use the client's address)
                         </label>
                         <input
                           type="text"
@@ -1246,10 +1244,10 @@ export default function App() {
                         />
                       </div>
 
-                      {/* Row 4: Product brief */}
+                      {/* Row 4: Service brief */}
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                          Product brief (printed under the items)
+                          Service brief / Remarks (printed under the items)
                         </label>
                         <textarea
                           rows={2}
@@ -1267,31 +1265,114 @@ export default function App() {
 
                     {/* Summary Card */}
                     <div className="light-card-elevated p-6 space-y-4">
-                      <h3 className="text-base font-bold text-slate-900 m-0">
-                        Summary
-                      </h3>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-base font-bold text-slate-900 m-0">
+                          Summary & Taxes
+                        </h3>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${gstEnabled ? (igstEnabled ? 'bg-indigo-100 text-indigo-800' : 'bg-teal-100 text-teal-800') : 'bg-slate-200 text-slate-600'}`}>
+                          {gstEnabled ? (igstEnabled ? 'IGST' : 'CGST + SGST') : 'Non-GST'}
+                        </span>
+                      </div>
+
+                      {/* GST & IGST Controls */}
+                      <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/80 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="toggle-gst" className="flex items-center space-x-2 cursor-pointer select-none">
+                            <input
+                              id="toggle-gst"
+                              type="checkbox"
+                              checked={gstEnabled}
+                              onChange={(e) => setGstEnabled(e.target.checked)}
+                              className="w-4 h-4 text-teal-700 rounded border-slate-300 focus:ring-teal-700/20"
+                            />
+                            <span className="text-xs font-bold text-slate-800">
+                              Enable GST
+                            </span>
+                          </label>
+                          <span className="text-[10px] text-slate-400">
+                            {gstEnabled ? 'Tax Invoice' : 'Bill of Supply'}
+                          </span>
+                        </div>
+
+                        {gstEnabled && (
+                          <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label htmlFor="toggle-igst" className="flex items-center space-x-2 cursor-pointer select-none">
+                                <input
+                                  id="toggle-igst"
+                                  type="checkbox"
+                                  checked={igstEnabled}
+                                  onChange={(e) => setIgstEnabled(e.target.checked)}
+                                  className="w-4 h-4 text-teal-700 rounded border-slate-300 focus:ring-teal-700/20"
+                                />
+                                <span className="text-xs font-semibold text-slate-700">
+                                  Enable IGST (Inter-State)
+                                </span>
+                              </label>
+                              <span className="text-[10px] text-slate-400">
+                                {igstEnabled ? 'Single Tax' : 'CGST + SGST'}
+                              </span>
+                            </div>
+
+                            {igstEnabled && (
+                              <div className="flex items-center justify-between pl-6 pt-1">
+                                <span className="text-[11px] text-slate-500">IGST Rate</span>
+                                <div className="flex items-center space-x-1">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.1"
+                                    value={igstRate}
+                                    onChange={(e) => setIgstRate(e.target.value)}
+                                    className="w-16 px-2 py-1 text-xs text-right font-bold rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-700"
+                                  />
+                                  <span className="text-xs text-slate-500 font-semibold">%</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
                       <div className="space-y-3 text-xs text-slate-600">
                         <div className="flex justify-between items-center">
-                          <span>Subtotal • {items.length} items</span>
+                          <span>Subtotal • {items.length} {items.length === 1 ? 'service' : 'services'}</span>
                           <span className="font-medium text-slate-900">
                             <AnimatedTicker value={taxableAmount} />
                           </span>
                         </div>
 
-                        <div className="flex justify-between items-center">
-                          <span>CGST (9.0%)</span>
-                          <span className="font-medium text-slate-900">
-                            <AnimatedTicker value={cgst} />
-                          </span>
-                        </div>
+                        {gstEnabled ? (
+                          igstEnabled ? (
+                            <div className="flex justify-between items-center text-indigo-900 font-medium">
+                              <span>IGST ({igstRate || 18}%)</span>
+                              <span className="text-slate-900">
+                                <AnimatedTicker value={igst} />
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between items-center">
+                                <span>CGST (9.0%)</span>
+                                <span className="font-medium text-slate-900">
+                                  <AnimatedTicker value={cgst} />
+                                </span>
+                              </div>
 
-                        <div className="flex justify-between items-center">
-                          <span>SGST (9.0%)</span>
-                          <span className="font-medium text-slate-900">
-                            <AnimatedTicker value={sgst} />
-                          </span>
-                        </div>
+                              <div className="flex justify-between items-center">
+                                <span>SGST (9.0%)</span>
+                                <span className="font-medium text-slate-900">
+                                  <AnimatedTicker value={sgst} />
+                                </span>
+                              </div>
+                            </>
+                          )
+                        ) : (
+                          <div className="py-1 px-2.5 rounded bg-amber-50 border border-amber-200/60 text-[11px] text-amber-800">
+                            GST disabled. PDF will omit all GST columns.
+                          </div>
+                        )}
 
                         <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
                           <span className="text-sm font-bold text-slate-900">Total</span>
@@ -1301,7 +1382,9 @@ export default function App() {
                         </div>
 
                         <p className="text-[11px] text-slate-400 m-0 pt-1 leading-relaxed">
-                          Rates include GST - exact 9% CGST and 9% SGST calculated automatically.
+                          {gstEnabled
+                            ? (igstEnabled ? `Rates include ${igstRate || 18}% IGST for inter-state supply.` : 'Rates include exact 9% CGST and 9% SGST calculated automatically.')
+                            : 'No tax applied. Generating a clean non-tax invoice.'}
                         </p>
                       </div>
 
@@ -1465,7 +1548,7 @@ export default function App() {
                           )}
                         </div>
                         <p className="text-slate-500 m-0 mt-0.5 truncate">
-                          {inv.customerName} • ₹{Number(inv.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          {inv.customerName || inv.clientName} • ₹{Number(inv.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </p>
                       </div>
 
