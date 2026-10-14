@@ -131,8 +131,16 @@ export default function App() {
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [reverseCharge, setReverseCharge] = useState('');
 
-  // Line items array - starts empty until the user adds items
-  const [items, setItems] = useState([]);
+  // Line items array - initialized with default service item ready to issue or customize
+  const [items, setItems] = useState([
+    {
+      id: 'item-1',
+      description: 'Professional Legal Advisory & Consulting Services',
+      hseSacCode: '998311',
+      cost: '50000',
+      qty: 1
+    }
+  ]);
 
   // Loading & Success States
   const [isGenerating, setIsGenerating] = useState(false);
@@ -268,7 +276,9 @@ export default function App() {
     if (e && e.preventDefault) e.preventDefault();
 
     if (!customerName.trim()) {
-      addToast('error', 'Missing Customer', 'Please specify a Customer Name before issuing.');
+      addToast('error', 'Missing Customer', 'Please enter a Customer Name before issuing.');
+      const custInput = document.getElementById('customer-name-input');
+      if (custInput) custInput.focus();
       return;
     }
 
@@ -314,19 +324,23 @@ export default function App() {
         }))
       };
 
-      // 1. Generate client-side PDF and Excel in the browser immediately
+      // 1. Generate client-side PDF in the browser
       let clientPdf = null;
-      let clientExcel = null;
       try {
-        [clientPdf, clientExcel] = await Promise.all([
-          generateClientInvoicePdf(payload),
-          generateClientInvoiceExcel(payload)
-        ]);
-      } catch (genErr) {
-        console.error('Document generation error:', genErr);
+        clientPdf = await generateClientInvoicePdf(payload);
+      } catch (pdfErr) {
+        console.error('PDF generation error:', pdfErr);
       }
 
-      // 2. Persist directly into Convex Cloud Database
+      // 2. Generate client-side Excel in the browser using SheetJS
+      let clientExcel = null;
+      try {
+        clientExcel = await generateClientInvoiceExcel(payload);
+      } catch (excelErr) {
+        console.error('Excel generation error:', excelErr);
+      }
+
+      // 3. Persist directly into Convex Cloud Database
       if (createInvoiceMutation) {
         try {
           await createInvoiceMutation({
@@ -339,7 +353,7 @@ export default function App() {
         }
       }
 
-      // 3. Fallback to Express backend if configured
+      // 4. Fallback to Express backend if configured
       let fileUrls = {
         pdf: clientPdf?.url || '#',
         excel: clientExcel?.url || '#'
@@ -359,9 +373,14 @@ export default function App() {
         } catch { }
       }
 
-      // 4. Automatically trigger PDF download so the user receives the file immediately
+      // 5. Automatically trigger PDF & Excel downloads so the user receives both files
       if (clientPdf?.blob) {
         handleDownload(clientPdf.blob, clientPdf.fileName);
+      }
+      if (clientExcel?.blob) {
+        setTimeout(() => {
+          handleDownload(clientExcel.blob, clientExcel.fileName);
+        }, 400);
       }
 
       // Update recent invoices cache
@@ -412,7 +431,11 @@ export default function App() {
       if (API_BASE_URL) {
         fetchRecentInvoices();
       }
-      addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created & PDF downloaded!`);
+
+      // Advance to next unique invoice number for future invoices
+      generateNewInvoiceNumber();
+
+      addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created! PDF & Excel downloaded.`);
 
       setTimeout(() => {
         setIsSuccess(false);
@@ -802,8 +825,8 @@ export default function App() {
                       </label>
                       <div>
                         <input
+                          id="customer-name-input"
                           type="text"
-                          required
                           placeholder="Search by name, phone, email or GSTIN..."
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
@@ -1228,7 +1251,7 @@ export default function App() {
                         </div>
 
                         <p className="text-[11px] text-slate-400 m-0 pt-1 leading-relaxed">
-                          Rates include GST — exact 9% CGST and 9% SGST calculated automatically.
+                          Rates include GST - exact 9% CGST and 9% SGST calculated automatically.
                         </p>
                       </div>
 

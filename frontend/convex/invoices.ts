@@ -54,22 +54,24 @@ export const createInvoice = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Check if invoiceNumber already exists
+    // Check if invoiceNumber already exists, and make unique if needed
+    let finalInvoiceNumber = args.invoiceNumber;
     const existing = await ctx.db
       .query("invoices")
       .withIndex("by_invoiceNumber", (q) => q.eq("invoiceNumber", args.invoiceNumber))
       .first();
 
     if (existing) {
-      throw new Error(`Invoice number ${args.invoiceNumber} already exists. Please choose a unique number.`);
+      finalInvoiceNumber = `${args.invoiceNumber}-${Math.floor(100 + Math.random() * 900)}`;
     }
 
     const id = await ctx.db.insert("invoices", {
       ...args,
+      invoiceNumber: finalInvoiceNumber,
       createdAt: Date.now(),
     });
 
-    return { id, invoiceNumber: args.invoiceNumber };
+    return { id, invoiceNumber: finalInvoiceNumber };
   },
 });
 
