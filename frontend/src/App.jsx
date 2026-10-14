@@ -271,6 +271,15 @@ export default function App() {
     }
   };
 
+  // --- Timeout helper: races a promise against a deadline so nothing hangs forever ---
+  const withTimeout = (promise, ms, label = 'Operation') =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      )
+    ]);
+
   // --- Submission Handler ---
   const handleIssueInvoice = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -331,41 +340,78 @@ export default function App() {
         })
       };
 
-      // 1. Generate client-side PDF in the browser
+      // ── STEP 1: Generate documents client-side (synchronous, no network) ──
       let clientPdf = null;
       try {
-        clientPdf = await generateClientInvoicePdf(payload);
+        clientPdf = await withTimeout(
+          generateClientInvoicePdf(payload),
+          8000,
+          'PDF generation'
+        );
       } catch (pdfErr) {
         console.error('PDF generation error:', pdfErr);
       }
 
-      // 2. Generate client-side Excel in the browser using SheetJS
       let clientExcel = null;
       try {
-        clientExcel = await generateClientInvoiceExcel(payload);
+        clientExcel = await withTimeout(
+          generateClientInvoiceExcel(payload),
+          8000,
+          'Excel generation'
+        );
       } catch (excelErr) {
         console.error('Excel generation error:', excelErr);
       }
 
-      // 3. Persist directly into Convex Cloud Database (matching Convex schema)
+      // ── STEP 2: Trigger downloads IMMEDIATELY (don't wait for backend) ──
+      if (clientPdf?.blob) {
+        handleDownload(clientPdf.blob, clientPdf.fileName);
+      }
+      if (clientExcel?.blob) {
+        setTimeout(() => {
+          handleDownload(clientExcel.blob, clientExcel.fileName);
+        }, 400);
+      }
+
+      // ── STEP 3: Persist to Convex (fire-and-forget with timeout) ──
+      // This is a best-effort save; it must NEVER block the UI.
       if (createInvoiceMutation) {
         try {
-          await createInvoiceMutation({
-            ...payload,
-            items: items.map((i) => ({
-              description: i.description.trim(),
-              hseSacCode: i.hseSacCode?.trim() || '998311',
-              cost: (parseFloat(i.cost) || 0) * (parseInt(i.qty, 10) || 1)
-            })),
-            pdfPath: clientPdf?.fileName || `${invoiceNumber}.pdf`,
-            excelPath: clientExcel?.fileName || `${invoiceNumber}.xlsx`
-          });
+          await withTimeout(
+            createInvoiceMutation({
+              invoiceNumber: payload.invoiceNumber,
+              date: payload.date,
+              customerName: payload.customerName,
+              customerEmail: payload.customerEmail,
+              customerAddress: payload.customerAddress,
+              customerGstin: payload.customerGstin,
+              placeOfSupply: payload.placeOfSupply,
+              reverseCharge: payload.reverseCharge,
+              poNumber: payload.poNumber,
+              poDate: payload.poDate,
+              grn: payload.grn,
+              remarks: payload.remarks,
+              taxableAmount: payload.taxableAmount,
+              cgst: payload.cgst,
+              sgst: payload.sgst,
+              totalAmount: payload.totalAmount,
+              items: items.map((i) => ({
+                description: i.description.trim(),
+                hseSacCode: i.hseSacCode?.trim() || '998311',
+                cost: (parseFloat(i.cost) || 0) * (parseInt(i.qty, 10) || 1)
+              })),
+              pdfPath: clientPdf?.fileName || `${invoiceNumber}.pdf`,
+              excelPath: clientExcel?.fileName || `${invoiceNumber}.xlsx`
+            }),
+            5000,
+            'Convex save'
+          );
         } catch (convexErr) {
-          console.warn('Convex mutation note:', convexErr.message);
+          console.warn('Convex persistence skipped:', convexErr.message);
         }
       }
 
-      // 4. Fallback to Express backend if configured
+      // ── STEP 4: Fallback to Express backend if configured ──
       let fileUrls = {
         pdf: clientPdf?.url || '#',
         excel: clientExcel?.url || '#'
@@ -385,17 +431,7 @@ export default function App() {
         } catch { }
       }
 
-      // 5. Automatically trigger PDF & Excel downloads so the user receives both files
-      if (clientPdf?.blob) {
-        handleDownload(clientPdf.blob, clientPdf.fileName);
-      }
-      if (clientExcel?.blob) {
-        setTimeout(() => {
-          handleDownload(clientExcel.blob, clientExcel.fileName);
-        }, 400);
-      }
-
-      // Update recent invoices cache
+      // ── STEP 5: Update local state ──
       setRecentInvoices((prev) => {
         const updated = [
           {
@@ -453,9 +489,11 @@ export default function App() {
         setIsSuccess(false);
       }, 4000);
     } catch (err) {
+      console.error('handleIssueInvoice error:', err);
       const msg = err.response?.data?.error || err.message || 'Error creating invoice';
       addToast('error', 'Invoice Error', msg);
     } finally {
+      // ALWAYS unlock the button — this is the critical line
       setIsGenerating(false);
     }
   };
