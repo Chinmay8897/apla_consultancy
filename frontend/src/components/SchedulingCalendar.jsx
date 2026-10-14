@@ -10,7 +10,9 @@ import {
   X,
   ArrowRight,
   Building,
-  Briefcase
+  Briefcase,
+  CalendarX,
+  CalendarCheck
 } from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -51,6 +53,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
   const convexSlots = useQuery(api.invoices.getAuditSlots);
   const bookSlotMutation = useMutation(api.invoices.bookAuditSlot);
   const initSlotsMutation = useMutation(api.invoices.initializeAuditSlots);
+  const setSlotStatusMutation = useMutation(api.invoices.setSlotStatus);
 
   // Current view month & year (defaults to active current month)
   const [currentDate, setCurrentDate] = useState(() => {
@@ -79,6 +82,21 @@ export function SchedulingCalendar({ onBackToInvoice }) {
   // Exact date selection and jump state
   const [highlightedDate, setHighlightedDate] = useState(null);
   const [jumpDate, setJumpDate] = useState('');
+
+  // Mark Available/Unavailable Modal and feedback states
+  const [isMarkUnavailableOpen, setIsMarkUnavailableOpen] = useState(false);
+  const [unavailableTargetDate, setUnavailableTargetDate] = useState(null);
+  const [unavailableReason, setUnavailableReason] = useState('Office Closed');
+  const [unavailableNote, setUnavailableNote] = useState('');
+  const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
+  const [toastNotification, setToastNotification] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToastNotification({ message, type });
+    setTimeout(() => {
+      setToastNotification(null);
+    }, 3500);
+  };
 
   // Minimalist Booking Form State
   const [clientName, setClientName] = useState('');
@@ -177,16 +195,16 @@ export function SchedulingCalendar({ onBackToInvoice }) {
     // Check if it's weekend (Saturday = 6, Sunday = 0)
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-    if (isWeekend) {
+    if (match) {
+      cellStatus = match.status;
+      cellData = match;
+    } else if (isWeekend) {
       // Mark all Saturdays and Sundays as gray (Weekend / Non-working)
       cellStatus = 'holiday';
       cellData = {
         title: dayOfWeek === 0 ? 'Sunday' : 'Saturday',
         note: 'Weekend • Office Closed'
       };
-    } else if (match) {
-      cellStatus = match.status;
-      cellData = match;
     }
 
     gridCells.push({
@@ -230,8 +248,100 @@ export function SchedulingCalendar({ onBackToInvoice }) {
       setSpecialNotes('');
       setSubmitFeedback(null);
       setIsBookingOpen(true);
-    } else if (cell.status === 'pending' || cell.status === 'booked' || cell.status === 'holiday') {
+    } else if (cell.status === 'pending' || cell.status === 'booked' || cell.status === 'holiday' || cell.status === 'unavailable') {
       setInspectDate(cell);
+    }
+  };
+
+  // --- Handlers for Changing Availability (Available <-> Unavailable) ---
+  const handleOpenMarkUnavailable = (dateKey) => {
+    setUnavailableTargetDate(dateKey);
+    setUnavailableReason('Office Closed');
+    setUnavailableNote('');
+    setIsMarkUnavailableOpen(true);
+  };
+
+  const handleConfirmMarkUnavailable = async (e) => {
+    if (e) e.preventDefault();
+    if (!unavailableTargetDate) return;
+
+    setIsUpdatingAvailability(true);
+    const dateToUpdate = unavailableTargetDate;
+    const reasonToSave = unavailableReason.trim() || 'Unavailable';
+    const noteToSave = unavailableNote.trim() || undefined;
+
+    try {
+      if (setSlotStatusMutation) {
+        try {
+          await setSlotStatusMutation({
+            date: dateToUpdate,
+            status: 'unavailable',
+            title: reasonToSave,
+            note: noteToSave
+          });
+        } catch (convexErr) {
+          console.warn('Convex slot status update:', convexErr.message);
+        }
+      }
+
+      setScheduleData((prev) => [
+        ...prev.filter((item) => item.date !== dateToUpdate),
+        {
+          date: dateToUpdate,
+          status: 'unavailable',
+          title: reasonToSave,
+          note: noteToSave
+        }
+      ]);
+
+      setIsMarkUnavailableOpen(false);
+      showToast(`Date ${dateToUpdate} marked as Unavailable (${reasonToSave}).`);
+    } catch (err) {
+      console.error('Failed to mark unavailable:', err);
+      showToast('Failed to update date availability.', 'error');
+    } finally {
+      setIsUpdatingAvailability(false);
+    }
+  };
+
+  const handleMakeAvailable = async (dateKey) => {
+    if (!dateKey) return;
+
+    setIsUpdatingAvailability(true);
+    try {
+      if (setSlotStatusMutation) {
+        try {
+          await setSlotStatusMutation({
+            date: dateKey,
+            status: 'available',
+            title: 'Open Slot',
+            note: undefined
+          });
+        } catch (convexErr) {
+          console.warn('Convex slot status update:', convexErr.message);
+        }
+      }
+
+      setScheduleData((prev) => [
+        ...prev.filter((item) => item.date !== dateKey),
+        {
+          date: dateKey,
+          status: 'available',
+          title: 'Open Slot',
+          time: 'Full Day Available'
+        }
+      ]);
+
+      if (inspectDate && inspectDate.dateKey === dateKey) {
+        setInspectDate(null);
+      }
+
+      showToast(`Date ${dateKey} is now set as Available!`);
+    } catch (err) {
+      console.error('Failed to make available:', err);
+      showToast('Failed to change date to available.', 'error');
+    } finally {
+      setIsUpdatingAvailability(false);
     }
   };
 
@@ -309,10 +419,11 @@ export function SchedulingCalendar({ onBackToInvoice }) {
         // 🟡 Yellow (Pending): Soft amber card indicating awaiting confirmation
         return 'bg-amber-50/45 hover:bg-amber-50/70 text-amber-950 border-amber-200/80 hover:border-amber-300 cursor-pointer transition-all duration-200';
 
+      case 'unavailable':
       case 'holiday':
       default:
-        // ⚪ Gray (Holidays/Unavailable): Subtle muted slate
-        return 'bg-slate-50/80 text-slate-500 border-slate-200/60 cursor-not-allowed';
+        // ⚪ Gray (Holidays/Unavailable): Subtle muted slate with interactive pointer
+        return 'bg-slate-50/80 hover:bg-slate-100 text-slate-600 border-slate-200/70 hover:border-slate-300 cursor-pointer transition-all duration-200';
     }
   };
 
@@ -462,22 +573,22 @@ export function SchedulingCalendar({ onBackToInvoice }) {
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 text-[11px] sm:text-xs">
             <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/90 text-emerald-800 font-semibold shadow-2xs">
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Available ({activeSchedule.filter((s) => s.status === 'available').length})</span>
+              <span>Available ({gridCells.filter((c) => c.isCurrentMonth && c.status === 'available').length})</span>
             </div>
 
             <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-rose-50 border border-rose-200/90 text-rose-800 font-semibold shadow-2xs">
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-rose-500" />
-              <span>Booked ({activeSchedule.filter((s) => s.status === 'booked').length})</span>
+              <span>Booked ({gridCells.filter((c) => c.isCurrentMonth && c.status === 'booked').length})</span>
             </div>
 
             <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-800 font-semibold shadow-2xs">
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-amber-500" />
-              <span>Pending ({activeSchedule.filter((s) => s.status === 'pending').length})</span>
+              <span>Pending ({gridCells.filter((c) => c.isCurrentMonth && c.status === 'pending').length})</span>
             </div>
 
             <div className="flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-semibold shadow-2xs">
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-slate-400" />
-              <span>Unavailable / Weekend</span>
+              <span>Unavailable ({gridCells.filter((c) => c.isCurrentMonth && (c.status === 'holiday' || c.status === 'unavailable')).length})</span>
             </div>
           </div>
 
@@ -511,10 +622,19 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                   available: 'Available Slot',
                   booked: 'Booked / Confirmed',
                   pending: 'Pending Confirmation',
-                  holiday: 'Weekend / Non-working'
+                  holiday: 'Unavailable / Weekend',
+                  unavailable: 'Marked Unavailable'
                 };
                 return (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-white border border-teal-200 text-teal-800 ml-1">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ml-1 border ${
+                    cell.status === 'available'
+                      ? 'bg-emerald-100/90 text-emerald-800 border-emerald-300'
+                      : cell.status === 'booked'
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : cell.status === 'pending'
+                          ? 'bg-amber-100 text-amber-800 border-amber-300'
+                          : 'bg-slate-200 text-slate-800 border-slate-300'
+                  }`}>
                     {statusLabels[cell.status] || cell.status}
                   </span>
                 );
@@ -526,24 +646,69 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                 const cell = gridCells.find((c) => c.dateKey === highlightedDate && c.isCurrentMonth);
                 if (cell && cell.status === 'available') {
                   return (
-                    <button
-                      type="button"
-                      onClick={() => handleCellClick(cell)}
-                      className="px-3 py-1 rounded-lg bg-[#18687D] hover:bg-[#145667] text-white font-bold text-xs shadow-2xs transition"
-                    >
-                      Book Slot
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleCellClick(cell)}
+                        className="px-3 py-1 rounded-lg bg-[#18687D] hover:bg-[#145667] text-white font-bold text-xs shadow-2xs transition flex items-center space-x-1"
+                      >
+                        <CalendarIcon className="w-3.5 h-3.5" />
+                        <span>Book Slot</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMarkUnavailable(cell.dateKey)}
+                        className="px-3 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-semibold text-xs shadow-2xs transition flex items-center space-x-1"
+                        title="Mark this available day as unavailable"
+                      >
+                        <CalendarX className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Mark Unavailable</span>
+                      </button>
+                    </>
                   );
                 }
-                if (cell && (cell.status === 'booked' || cell.status === 'pending' || cell.status === 'holiday')) {
+                if (cell && (cell.status === 'holiday' || cell.status === 'unavailable')) {
                   return (
-                    <button
-                      type="button"
-                      onClick={() => handleCellClick(cell)}
-                      className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs shadow-2xs transition"
-                    >
-                      View Details
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleMakeAvailable(cell.dateKey)}
+                        className="px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-semibold text-xs shadow-2xs transition flex items-center space-x-1"
+                        title="Make this day available for booking"
+                      >
+                        <CalendarCheck className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Make Available</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCellClick(cell)}
+                        className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs shadow-2xs transition"
+                      >
+                        View Details
+                      </button>
+                    </>
+                  );
+                }
+                if (cell && (cell.status === 'booked' || cell.status === 'pending')) {
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMarkUnavailable(cell.dateKey)}
+                        className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-medium text-xs transition flex items-center space-x-1"
+                        title="Block and mark unavailable"
+                      >
+                        <CalendarX className="w-3 h-3 text-amber-700" />
+                        <span>Mark Unavailable</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCellClick(cell)}
+                        className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs shadow-2xs transition"
+                      >
+                        View Details
+                      </button>
+                    </>
                   );
                 }
                 return null;
@@ -600,7 +765,7 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                     <span className={`text-[11px] sm:text-sm font-bold ${
                       isToday
                         ? 'w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#18687D] text-white flex items-center justify-center -ml-0.5 shadow-2xs text-[10px] sm:text-xs'
-                        : cell.status === 'holiday'
+                        : cell.status === 'holiday' || cell.status === 'unavailable'
                           ? 'text-slate-400'
                           : 'text-slate-900'
                     }`}>
@@ -624,6 +789,9 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                       )}
                       {cell.status === 'pending' && (
                         <span className="inline-block w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-amber-500 ring-1 sm:ring-2 ring-amber-200" />
+                      )}
+                      {(cell.status === 'holiday' || cell.status === 'unavailable') && (
+                        <span className="inline-block w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-slate-400 ring-1 sm:ring-2 ring-slate-200" />
                       )}
                     </span>
                   )}
@@ -655,18 +823,44 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                         </div>
                       )}
 
-                      {cell.status === 'holiday' && (
-                        <p className="text-slate-400 truncate m-0 text-[8px] sm:text-[9px] font-medium">
-                          {cell.data.title || 'Closed'}
-                        </p>
+                      {(cell.status === 'holiday' || cell.status === 'unavailable') && (
+                        <div className="flex items-center justify-between">
+                          <p className="text-slate-500 truncate m-0 text-[8px] sm:text-[9px] font-medium">
+                            {cell.data.title || (cell.status === 'holiday' ? 'Closed' : 'Unavailable')}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMakeAvailable(cell.dateKey);
+                            }}
+                            title="Make day available"
+                            className="hidden sm:inline-flex p-0.5 rounded hover:bg-emerald-100 text-slate-400 hover:text-emerald-700 transition"
+                          >
+                            <CalendarCheck className="w-3 h-3" />
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
 
                   {cell.isCurrentMonth && cell.status === 'available' && (
-                    <div className="text-[8px] sm:text-[10px] font-semibold text-emerald-800 flex items-center space-x-1">
-                      <span className="hidden sm:inline bg-emerald-100/80 px-1.5 py-0.5 rounded text-emerald-800 font-bold">+ Book Slot</span>
-                      <span className="sm:hidden text-center w-full font-bold text-emerald-700 text-[8px]">Open</span>
+                    <div className="text-[8px] sm:text-[10px] font-semibold text-emerald-800 flex items-center justify-between">
+                      <div className="flex items-center space-x-1">
+                        <span className="hidden sm:inline bg-emerald-100/80 px-1.5 py-0.5 rounded text-emerald-800 font-bold">+ Book Slot</span>
+                        <span className="sm:hidden text-center w-full font-bold text-emerald-700 text-[8px]">Open</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenMarkUnavailable(cell.dateKey);
+                        }}
+                        title="Mark day as unavailable"
+                        className="hidden sm:inline-flex p-0.5 rounded hover:bg-amber-100 text-slate-400 hover:text-amber-800 transition"
+                      >
+                        <CalendarX className="w-3 h-3" />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -715,6 +909,25 @@ export function SchedulingCalendar({ onBackToInvoice }) {
 
               {/* Form Content */}
               <form onSubmit={handleScheduleAudit} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto custom-scrollbar flex-1">
+
+                {/* Option to change this available day to unavailable */}
+                <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-amber-950 shadow-2xs">
+                  <div className="flex items-center space-x-2">
+                    <CalendarX className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>Need to block this day instead of booking?</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = selectedDate;
+                      setIsBookingOpen(false);
+                      handleOpenMarkUnavailable(d);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 font-bold text-[11px] text-amber-900 transition shadow-2xs self-start sm:self-auto shrink-0"
+                  >
+                    Mark Unavailable →
+                  </button>
+                </div>
 
                 {submitFeedback && (
                   <div className={`p-3 rounded-xl border flex items-center space-x-2.5 ${
@@ -863,7 +1076,9 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                         ? 'bg-amber-100 text-amber-800 font-bold'
                         : 'bg-slate-100 text-slate-700 font-bold'
                   }`}>
-                    {inspectDate.status}
+                    {inspectDate.status === 'holiday' || inspectDate.status === 'unavailable'
+                      ? 'Unavailable'
+                      : inspectDate.status}
                   </span>
                   <h4 className="text-base font-bold text-slate-900 mt-1 m-0">
                     {inspectDate.dateKey}
@@ -909,6 +1124,48 @@ export function SchedulingCalendar({ onBackToInvoice }) {
                 </div>
               )}
 
+              {/* Action: If unavailable or holiday, allow changing to Available Day */}
+              {(inspectDate.status === 'holiday' || inspectDate.status === 'unavailable') && (
+                <button
+                  type="button"
+                  onClick={() => handleMakeAvailable(inspectDate.dateKey)}
+                  disabled={isUpdatingAvailability}
+                  className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition flex items-center justify-center space-x-1.5 shadow-sm active:scale-98 disabled:opacity-70"
+                >
+                  <CalendarCheck className="w-4 h-4" />
+                  <span>{isUpdatingAvailability ? 'Updating...' : 'Change to Available Day'}</span>
+                </button>
+              )}
+
+              {/* Action: If booked or pending, allow resetting or marking unavailable */}
+              {(inspectDate.status === 'booked' || inspectDate.status === 'pending') && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleMakeAvailable(inspectDate.dateKey)}
+                    disabled={isUpdatingAvailability}
+                    className="flex-1 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold text-xs transition flex items-center justify-center space-x-1 shadow-2xs disabled:opacity-70"
+                    title="Cancel booking and reset to available"
+                  >
+                    <CalendarCheck className="w-3.5 h-3.5" />
+                    <span>Make Available</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = inspectDate.dateKey;
+                      setInspectDate(null);
+                      handleOpenMarkUnavailable(d);
+                    }}
+                    className="flex-1 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-xs transition flex items-center justify-center space-x-1 shadow-2xs"
+                    title="Block and mark unavailable"
+                  >
+                    <CalendarX className="w-3.5 h-3.5" />
+                    <span>Mark Unavailable</span>
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => setInspectDate(null)}
@@ -918,6 +1175,158 @@ export function SchedulingCalendar({ onBackToInvoice }) {
               </button>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* =========================================================================
+          MODAL PANEL: Mark Date as Unavailable
+          ========================================================================= */}
+      <AnimatePresence>
+        {isMarkUnavailableOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              className="bg-white rounded-2xl border border-slate-200/90 shadow-2xl max-w-md w-full overflow-hidden text-slate-800"
+            >
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-800 flex items-center justify-center shrink-0">
+                    <CalendarX className="w-4 h-4 sm:w-5 sm:h-5 text-amber-700" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 m-0">
+                      Mark Day as Unavailable
+                    </h3>
+                    <p className="text-xs text-slate-500 m-0 mt-0.5">
+                      Target Date: <strong className="text-amber-900">{unavailableTargetDate}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsMarkUnavailableOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <form onSubmit={handleConfirmMarkUnavailable} className="p-4 sm:p-6 space-y-4 text-xs">
+                <p className="text-xs text-slate-600 m-0 leading-relaxed">
+                  Block this date so it cannot be booked for client audits. You can switch it back to available at any time.
+                </p>
+
+                {/* Quick Presets */}
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Quick Reason Presets
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Office Closed',
+                      'Public Holiday',
+                      'Staff Training',
+                      'System Maintenance',
+                      'Full Schedule / Offsite',
+                      'Personal Leave'
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setUnavailableReason(preset)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${
+                          unavailableReason === preset
+                            ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-2xs'
+                            : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reason Label */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Reason / Label *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Office Closed, Maintenance, Holiday..."
+                    value={unavailableReason}
+                    onChange={(e) => setUnavailableReason(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/10 transition shadow-2xs font-medium"
+                  />
+                </div>
+
+                {/* Additional Note */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Additional Note (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Add any specific details or internal notes..."
+                    value={unavailableNote}
+                    onChange={(e) => setUnavailableNote(e.target.value)}
+                    className="w-full p-2.5 rounded-lg border border-slate-200 text-xs text-slate-900 bg-white focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/10 transition resize-none shadow-2xs"
+                  />
+                </div>
+
+                {/* Modal Actions */}
+                <div className="pt-2 flex items-center justify-end space-x-2.5 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsMarkUnavailableOpen(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isUpdatingAvailability}
+                    className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs tracking-wide shadow-sm flex items-center space-x-1.5 transition active:scale-98 disabled:opacity-70"
+                  >
+                    <CalendarX className="w-3.5 h-3.5" />
+                    <span>{isUpdatingAvailability ? 'Updating...' : 'Confirm Unavailable'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* =========================================================================
+          FLOATING TOAST NOTIFICATION
+          ========================================================================= */}
+      <AnimatePresence>
+        {toastNotification && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            className={`fixed bottom-6 right-6 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-xl shadow-xl border ${
+              toastNotification.type === 'error'
+                ? 'bg-rose-50 text-rose-900 border-rose-200'
+                : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+            }`}
+          >
+            {toastNotification.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            )}
+            <span className="text-xs font-semibold">{toastNotification.message}</span>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

@@ -155,3 +155,45 @@ export const initializeAuditSlots = mutation({
     return { initialized: false, message: "Slots already exist" };
   },
 });
+
+// 8. Mutation: Set slot status (e.g. mark available, unavailable, holiday)
+export const setSlotStatus = mutation({
+  args: {
+    date: v.string(),
+    status: v.string(), // "available" | "unavailable" | "holiday" | "booked" | "pending"
+    title: v.optional(v.string()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("auditSlots")
+      .withIndex("by_date", (q) => q.eq("date", args.date))
+      .first();
+
+    if (existing) {
+      if (args.status === "available") {
+        await ctx.db.delete(existing._id);
+        return await ctx.db.insert("auditSlots", {
+          date: args.date,
+          status: "available",
+          title: args.title || "Open Slot",
+          note: args.note,
+        });
+      } else {
+        await ctx.db.patch(existing._id, {
+          status: args.status,
+          title: args.title,
+          note: args.note,
+        });
+        return existing._id;
+      }
+    } else {
+      return await ctx.db.insert("auditSlots", {
+        date: args.date,
+        status: args.status,
+        title: args.title,
+        note: args.note,
+      });
+    }
+  },
+});
