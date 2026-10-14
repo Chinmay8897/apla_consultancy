@@ -23,6 +23,8 @@ import { LoginPage } from './components/LoginPage';
 import { SchedulingCalendar } from './components/SchedulingCalendar';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
+import { generateClientInvoicePdf } from './utils/clientPdfGenerator';
+import { generateClientInvoiceExcel } from './utils/clientExcelGenerator';
 
 const isLocalhost =
   typeof window !== 'undefined' &&
@@ -204,6 +206,63 @@ export default function App() {
     );
   };
 
+  // --- Download & Document Generation Helpers ---
+  const [downloadingInvId, setDownloadingInvId] = useState(null);
+
+  const handleDownload = (blobOrUrl, fileName) => {
+    if (!blobOrUrl || blobOrUrl === '#') return;
+    const link = document.createElement('a');
+    link.href = typeof blobOrUrl === 'string' ? blobOrUrl : URL.createObjectURL(blobOrUrl);
+    link.download = fileName || 'invoice';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    if (typeof blobOrUrl !== 'string') {
+      setTimeout(() => URL.revokeObjectURL(link.href), 20000);
+    }
+  };
+
+  const handleDownloadHistoryInvoice = async (inv, format) => {
+    const loadingKey = `${inv._id || inv.id}-${format}`;
+    setDownloadingInvId(loadingKey);
+    try {
+      const invoiceData = {
+        invoiceNumber: inv.invoiceNumber,
+        date: inv.date,
+        customerName: inv.customerName,
+        customerEmail: inv.customerEmail,
+        customerAddress: inv.customerAddress,
+        customerGstin: inv.customerGstin,
+        placeOfSupply: inv.placeOfSupply,
+        reverseCharge: inv.reverseCharge,
+        poNumber: inv.poNumber,
+        poDate: inv.poDate,
+        grn: inv.grn,
+        remarks: inv.remarks,
+        taxableAmount: inv.taxableAmount,
+        cgst: inv.cgst,
+        sgst: inv.sgst,
+        totalAmount: inv.totalAmount,
+        items: inv.items || []
+      };
+
+      if (format === 'pdf') {
+        const { blob, fileName } = await generateClientInvoicePdf(invoiceData);
+        handleDownload(blob, fileName);
+        addToast('success', 'PDF Ready', `Downloaded ${fileName}`);
+      } else {
+        const { blob, fileName } = await generateClientInvoiceExcel(invoiceData);
+        handleDownload(blob, fileName);
+        addToast('success', 'Excel Ready', `Downloaded ${fileName}`);
+      }
+    } catch (err) {
+      console.error('Error generating historical document:', err);
+      addToast('error', 'Download Failed', 'Could not generate document.');
+    } finally {
+      setDownloadingInvId(null);
+    }
+  };
+
   // --- Submission Handler ---
   const handleIssueInvoice = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -255,17 +314,36 @@ export default function App() {
         }))
       };
 
-      // 1. Persist directly into Convex Cloud Database
+      // 1. Generate client-side PDF and Excel in the browser immediately
+      let clientPdf = null;
+      let clientExcel = null;
+      try {
+        [clientPdf, clientExcel] = await Promise.all([
+          generateClientInvoicePdf(payload),
+          generateClientInvoiceExcel(payload)
+        ]);
+      } catch (genErr) {
+        console.error('Document generation error:', genErr);
+      }
+
+      // 2. Persist directly into Convex Cloud Database
       if (createInvoiceMutation) {
         try {
-          await createInvoiceMutation(payload);
+          await createInvoiceMutation({
+            ...payload,
+            pdfPath: clientPdf?.fileName || `${invoiceNumber}.pdf`,
+            excelPath: clientExcel?.fileName || `${invoiceNumber}.xlsx`
+          });
         } catch (convexErr) {
           console.warn('Convex mutation note:', convexErr.message);
         }
       }
 
-      // 2. Also dispatch to local/Express server for PDF/Excel files if running and configured
-      let fileUrls = { pdf: '#', excel: '#' };
+      // 3. Fallback to Express backend if configured
+      let fileUrls = {
+        pdf: clientPdf?.url || '#',
+        excel: clientExcel?.url || '#'
+      };
       if (API_BASE_URL) {
         try {
           const res = await axios.post(`${API_BASE_URL}/api/invoices`, payload, {
@@ -278,9 +356,12 @@ export default function App() {
           if (res.data?.downloadUrls) {
             fileUrls = res.data.downloadUrls;
           }
-        } catch {
-          // Express backend is optional when deployed to Convex + Vercel
-        }
+        } catch { }
+      }
+
+      // 4. Automatically trigger PDF download so the user receives the file immediately
+      if (clientPdf?.blob) {
+        handleDownload(clientPdf.blob, clientPdf.fileName);
       }
 
       // Update recent invoices cache
@@ -292,8 +373,20 @@ export default function App() {
             customerName,
             totalAmount: grandTotal,
             date,
-            pdfPath: fileUrls.pdf !== '#' ? fileUrls.pdf : null,
-            excelPath: fileUrls.excel !== '#' ? fileUrls.excel : null
+            pdfPath: clientPdf?.fileName || `${invoiceNumber}.pdf`,
+            excelPath: clientExcel?.fileName || `${invoiceNumber}.xlsx`,
+            items: payload.items,
+            taxableAmount,
+            cgst,
+            sgst,
+            customerAddress,
+            customerGstin,
+            placeOfSupply,
+            reverseCharge,
+            poNumber,
+            poDate,
+            grn,
+            remarks: payload.remarks
           },
           ...prev
         ];
@@ -311,12 +404,15 @@ export default function App() {
           customerName,
           totalAmount: grandTotal
         },
+        pdf: clientPdf,
+        excel: clientExcel,
         downloadUrls: fileUrls
       });
+
       if (API_BASE_URL) {
         fetchRecentInvoices();
       }
-      addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created and recorded successfully!`);
+      addToast('success', 'Invoice Issued', `Invoice ${invoiceNumber} created & PDF downloaded!`);
 
       setTimeout(() => {
         setIsSuccess(false);
@@ -1200,25 +1296,35 @@ export default function App() {
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 pt-1">
-                            <a
-                              href={lastGenerated.downloadUrls.pdf}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="py-2 px-3 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-rose-700 hover:bg-rose-50 flex items-center justify-center space-x-1.5 transition shadow-2xs"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (lastGenerated.pdf?.blob) {
+                                  handleDownload(lastGenerated.pdf.blob, lastGenerated.pdf.fileName);
+                                } else if (lastGenerated.downloadUrls?.pdf && lastGenerated.downloadUrls.pdf !== '#') {
+                                  window.open(lastGenerated.downloadUrls.pdf, '_blank');
+                                }
+                              }}
+                              className="py-2 px-3 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-rose-700 hover:bg-rose-50 flex items-center justify-center space-x-1.5 transition shadow-2xs cursor-pointer active:scale-95"
                             >
                               <FileText className="w-3.5 h-3.5 text-rose-600" />
-                              <span>PDF</span>
-                            </a>
+                              <span>Download PDF</span>
+                            </button>
 
-                            <a
-                              href={lastGenerated.downloadUrls.excel}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="py-2 px-3 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center justify-center space-x-1.5 transition shadow-2xs"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (lastGenerated.excel?.blob) {
+                                  handleDownload(lastGenerated.excel.blob, lastGenerated.excel.fileName);
+                                } else if (lastGenerated.downloadUrls?.excel && lastGenerated.downloadUrls.excel !== '#') {
+                                  window.open(lastGenerated.downloadUrls.excel, '_blank');
+                                }
+                              }}
+                              className="py-2 px-3 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center justify-center space-x-1.5 transition shadow-2xs cursor-pointer active:scale-95"
                             >
                               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Excel</span>
-                            </a>
+                              <span>Download Excel</span>
+                            </button>
                           </div>
                         </motion.div>
                       )}
@@ -1291,28 +1397,35 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
-                        {inv.pdfPath && (
-                          <a
-                            href={inv.pdfPath.startsWith('http') ? inv.pdfPath : `${API_BASE_URL}${inv.pdfPath}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 transition"
-                            title="Download PDF"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </a>
-                        )}
-                        {inv.excelPath && (
-                          <a
-                            href={inv.excelPath.startsWith('http') ? inv.excelPath : `${API_BASE_URL}${inv.excelPath}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
-                            title="Download Excel"
-                          >
-                            <FileSpreadsheet className="w-4 h-4" />
-                          </a>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadHistoryInvoice(inv, 'pdf')}
+                          disabled={downloadingInvId === `${inv._id || inv.id}-pdf`}
+                          className="px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 font-medium flex items-center space-x-1 transition disabled:opacity-50 cursor-pointer active:scale-95"
+                          title="Download PDF"
+                        >
+                          {downloadingInvId === `${inv._id || inv.id}-pdf` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <FileText className="w-3.5 h-3.5" />
+                          )}
+                          <span className="text-[11px] font-semibold">PDF</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadHistoryInvoice(inv, 'excel')}
+                          disabled={downloadingInvId === `${inv._id || inv.id}-excel`}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium flex items-center space-x-1 transition disabled:opacity-50 cursor-pointer active:scale-95"
+                          title="Download Excel"
+                        >
+                          {downloadingInvId === `${inv._id || inv.id}-excel` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                          )}
+                          <span className="text-[11px] font-semibold">Excel</span>
+                        </button>
                       </div>
                     </div>
                   ));
