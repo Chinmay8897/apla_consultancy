@@ -302,7 +302,10 @@ export async function generateClientInvoicePdf(invoiceData) {
 
   // --- Body Item Rows ---
   items.forEach((item, index) => {
+    const qty = parseInt(item.qty, 10) || 1;
     const cost = parseFloat(item.cost) || 0;
+    const rate = item.rate !== undefined ? (parseFloat(item.rate) || 0) : (qty > 1 ? cost / qty : cost);
+    const lineTotal = item.totalSale !== undefined ? (parseFloat(item.totalSale) || 0) : (rate * qty || cost);
     const itemRowH = 24;
 
     colDefs.forEach(col => {
@@ -312,16 +315,16 @@ export async function generateClientInvoicePdf(invoiceData) {
     drawText(doc, String(index + 1), colDefs[0].x, currentY, colDefs[0].w, itemRowH, { size: 7.5, align: 'center' });
     drawText(doc, item.description, colDefs[1].x, currentY, colDefs[1].w, itemRowH, { bold: true, size: 6.8, align: 'center', lineGap: 0.8 });
     drawText(doc, item.hseSacCode || '998311', colDefs[2].x, currentY, colDefs[2].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, item.qty || '1', colDefs[3].x, currentY, colDefs[3].w, itemRowH, { size: 7.5, align: 'center' });
+    drawText(doc, String(qty), colDefs[3].x, currentY, colDefs[3].w, itemRowH, { size: 7.5, align: 'center' });
     drawText(doc, item.unit || '-', colDefs[4].x, currentY, colDefs[4].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(cost), colDefs[5].x, currentY, colDefs[5].w, itemRowH, { size: 7.5, align: 'right' });
-    drawText(doc, formatIndianNumber(cost), colDefs[6].x, currentY, colDefs[6].w, itemRowH, { size: 7.5, align: 'right' });
+    drawText(doc, formatIndianNumber(rate), colDefs[5].x, currentY, colDefs[5].w, itemRowH, { size: 7.5, align: 'right' });
+    drawText(doc, formatIndianNumber(lineTotal), colDefs[6].x, currentY, colDefs[6].w, itemRowH, { size: 7.5, align: 'right' });
     drawText(doc, item.disc || '-', colDefs[7].x, currentY, colDefs[7].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(cost), colDefs[8].x, currentY, colDefs[8].w, itemRowH, { size: 7.5, align: 'right' });
+    drawText(doc, formatIndianNumber(lineTotal), colDefs[8].x, currentY, colDefs[8].w, itemRowH, { size: 7.5, align: 'right' });
     drawText(doc, '9%', colDefs[9].x, currentY, colDefs[9].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(cost * 0.09), colDefs[10].x, currentY, colDefs[10].w, itemRowH, { size: 7.5, align: 'right' });
+    drawText(doc, formatIndianNumber(lineTotal * 0.09), colDefs[10].x, currentY, colDefs[10].w, itemRowH, { size: 7.5, align: 'right' });
     drawText(doc, '9%', colDefs[11].x, currentY, colDefs[11].w, itemRowH, { size: 7.5, align: 'center' });
-    drawText(doc, formatIndianNumber(cost * 0.09), colDefs[12].x, currentY, colDefs[12].w, itemRowH, { size: 7.5, align: 'right' });
+    drawText(doc, formatIndianNumber(lineTotal * 0.09), colDefs[12].x, currentY, colDefs[12].w, itemRowH, { size: 7.5, align: 'right' });
     drawText(doc, '0%', colDefs[13].x, currentY, colDefs[13].w, itemRowH, { size: 7.5, align: 'center' });
     drawText(doc, '-', colDefs[14].x, currentY, colDefs[14].w, itemRowH, { size: 7.5, align: 'center' });
 

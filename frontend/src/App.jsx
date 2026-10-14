@@ -317,11 +317,18 @@ export default function App() {
         cgst,
         sgst,
         totalAmount: grandTotal,
-        items: items.map((i) => ({
-          description: i.description.trim(),
-          hseSacCode: i.hseSacCode?.trim() || '',
-          cost: parseFloat(i.cost) * (parseInt(i.qty, 10) || 1)
-        }))
+        items: items.map((i) => {
+          const qty = parseInt(i.qty, 10) || 1;
+          const unitRate = parseFloat(i.cost) || 0;
+          return {
+            description: i.description.trim(),
+            hseSacCode: i.hseSacCode?.trim() || '998311',
+            qty,
+            rate: unitRate,
+            cost: unitRate * qty,
+            totalSale: unitRate * qty
+          };
+        })
       };
 
       // 1. Generate client-side PDF in the browser
@@ -340,11 +347,16 @@ export default function App() {
         console.error('Excel generation error:', excelErr);
       }
 
-      // 3. Persist directly into Convex Cloud Database
+      // 3. Persist directly into Convex Cloud Database (matching Convex schema)
       if (createInvoiceMutation) {
         try {
           await createInvoiceMutation({
             ...payload,
+            items: items.map((i) => ({
+              description: i.description.trim(),
+              hseSacCode: i.hseSacCode?.trim() || '998311',
+              cost: (parseFloat(i.cost) || 0) * (parseInt(i.qty, 10) || 1)
+            })),
             pdfPath: clientPdf?.fileName || `${invoiceNumber}.pdf`,
             excelPath: clientExcel?.fileName || `${invoiceNumber}.xlsx`
           });

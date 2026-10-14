@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { formatIndianNumber, formatInvoiceDate, numberToWords, getDigitalSignatureTimestamp } from './formatters.js';
+import { formatInvoiceDate, numberToWords, getDigitalSignatureTimestamp } from './formatters.js';
 
 /**
  * Generates an invoice Excel (.xlsx) file matching the Anand Professionals & Law Advisors template.
@@ -117,21 +117,25 @@ export async function generateClientInvoiceExcel(invoiceData) {
 
   // Row 11+: Item rows
   items.forEach((item, index) => {
+    const qty = parseInt(item.qty, 10) || 1;
     const cost = parseFloat(item.cost) || 0;
+    const rate = item.rate !== undefined ? (parseFloat(item.rate) || 0) : (qty > 1 ? cost / qty : cost);
+    const lineTotal = item.totalSale !== undefined ? (parseFloat(item.totalSale) || 0) : (rate * qty || cost);
+
     addRow([
       index + 1,
       item.description,
       item.hseSacCode || '998311',
-      item.qty || 1,
+      qty,
       item.unit || '-',
-      cost,
-      cost,
+      rate,
+      lineTotal,
       '-',
-      cost,
+      lineTotal,
       '9%',
-      Number((cost * 0.09).toFixed(2)),
+      Number((lineTotal * 0.09).toFixed(2)),
       '9%',
-      Number((cost * 0.09).toFixed(2)),
+      Number((lineTotal * 0.09).toFixed(2)),
       '0%',
       '-'
     ]);
